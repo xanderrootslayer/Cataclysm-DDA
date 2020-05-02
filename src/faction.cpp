@@ -547,13 +547,9 @@ int npc::faction_display( const catacurses::window &fac_w, const int width ) con
     nc_color see_color;
     bool u_has_radio = g->u.has_item_with_flag( "TWO_WAY_RADIO", true );
     bool guy_has_radio = has_item_with_flag( "TWO_WAY_RADIO", true );
-    // TODO: NPCS on mission contactable same as traveling
-    if( has_companion_mission() && mission != NPC_MISSION_TRAVELLING ) {
-        can_see = _( "Not interactable while on a mission" );
-        see_color = c_light_red;
-        // is the NPC even in the same area as the player?
-    } else if( rl_dist( player_abspos, global_omt_location() ) > 3 ||
-               ( rl_dist( g->u.pos(), pos() ) > SEEX * 2 || !g->u.sees( pos() ) ) ) {
+    // is the NPC even in the same area as the player?
+    if( rl_dist( player_abspos, global_omt_location() ) > 3 ||
+        ( rl_dist( g->u.pos(), pos() ) > SEEX * 2 || !g->u.sees( pos() ) ) ) {
         if( u_has_radio && guy_has_radio ) {
             // TODO: better range calculation than just elevation.
             int max_range = 200;
@@ -598,6 +594,11 @@ int npc::faction_display( const catacurses::window &fac_w, const int width ) con
         can_see = _( "Within interaction range" );
         see_color = c_light_green;
     }
+    // TODO: NPCS on mission contactable same as traveling
+    if( has_companion_mission() ) {
+        can_see = _( "Press enter to recall from their mission." );
+        see_color = c_light_red;
+    }
     mvwprintz( fac_w, point( width, ++y ), see_color, "%s", can_see );
     nc_color status_col = col;
     std::string current_status = _( "Status: " );
@@ -641,7 +642,8 @@ int npc::faction_display( const catacurses::window &fac_w, const int width ) con
     const auto skillslist = Skill::get_skills_sorted_by( [&]( const Skill & a, const Skill & b ) {
         const int level_a = get_skill_level( a.ident() );
         const int level_b = get_skill_level( b.ident() );
-        return level_a > level_b || ( level_a == level_b && a.name() < b.name() );
+        return localized_compare( std::make_pair( -level_a, a.name() ),
+                                  std::make_pair( -level_b, b.name() ) );
     } );
     size_t count = 0;
     std::vector<std::string> skill_strs;
@@ -891,11 +893,16 @@ void faction_manager::display() const
             } else {
                 selection--;
             }
-        } else if( action == "CONFIRM" ) {
-            if( tab == tab_mode::TAB_FOLLOWERS && guy && ( interactable || radio_interactable ) ) {
-                guy->talk_to_u( false, radio_interactable );
-            } else if( tab == tab_mode::TAB_MYFACTION && camp ) {
-                camp->query_new_name();
+        } else if( action == "CONFIRM" && guy ) {
+            if( guy->has_companion_mission() ) {
+                guy->reset_companion_mission();
+                popup( _( "%s returns from their mission" ), guy->disp_name() );
+            } else {
+                if( tab == tab_mode::TAB_FOLLOWERS && guy && ( interactable || radio_interactable ) ) {
+                    guy->talk_to_u( false, radio_interactable );
+                } else if( tab == tab_mode::TAB_MYFACTION && camp ) {
+                    camp->query_new_name();
+                }
             }
         } else if( action == "QUIT" ) {
             break;

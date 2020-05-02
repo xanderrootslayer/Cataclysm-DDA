@@ -1034,7 +1034,7 @@ action_id input_context::display_menu( const bool permit_execute_action )
         display_height = height - LEGEND_HEIGHT - BORDER_SPACE; // -2 for the border
         // width of the legend
         legwidth = width - 4 - BORDER_SPACE;
-        spopup.window( w_help, 4, 8, legwidth )
+        spopup.window( w_help, point( 4, 8 ), legwidth )
         .max_length( legwidth )
         .context( ctxt );
         ui.position_from_window( w_help );
@@ -1338,8 +1338,8 @@ cata::optional<tripoint> input_context::get_coordinates( const catacurses::windo
         return cata::nullopt;
     }
     const point view_size( getmaxx( capture_win ), getmaxy( capture_win ) );
-    const point win_min( getbegx( capture_win ) - VIEW_OFFSET_X,
-                         getbegy( capture_win ) - VIEW_OFFSET_Y );
+    const point win_min( getbegx( capture_win ),
+                         getbegy( capture_win ) );
     const rectangle win_bounds( win_min, win_min + view_size );
     if( !win_bounds.contains_half_open( coordinate ) ) {
         return cata::nullopt;

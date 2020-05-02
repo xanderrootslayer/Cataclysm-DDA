@@ -641,7 +641,14 @@ void dream::load( const JsonObject &jsobj )
 
 bool trait_display_sort( const trait_id &a, const trait_id &b ) noexcept
 {
-    return a->name() < b->name();
+    if( a->get_display_color() > b->get_display_color() ) {
+        return true;
+    }
+    if( a->get_display_color() < b->get_display_color() ) {
+        return false;
+    }
+
+    return localized_compare( a->name(), b->name() );
 }
 
 void mutation_branch::load_trait_blacklist( const JsonObject &jsobj )
