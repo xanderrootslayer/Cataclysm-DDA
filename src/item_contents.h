@@ -51,6 +51,8 @@ class item_contents
         bool empty_container() const;
         // checks if CONTAINER pockets are all full
         bool full( bool allow_bucket ) const;
+        // are any CONTAINER pockets bigger on the inside than the container's volume?
+        bool bigger_on_the_inside( const units::volume &container_volume ) const;
         // number of pockets
         size_t size() const;
 
@@ -58,6 +60,9 @@ class item_contents
         std::list<item *> all_items_top( item_pocket::pocket_type pk_type );
         /** returns a list of pointers to all top-level items */
         std::list<const item *> all_items_top( item_pocket::pocket_type pk_type ) const;
+
+        // returns a list of pointers to all top level items that pass is_standard_type
+        std::list<const item *> all_standard_items_top() const;
 
         /** returns a list of pointers to all top-level items that are not mods */
         std::list<item *> all_items_top();
@@ -76,6 +81,9 @@ class item_contents
         std::vector<item *> gunmods();
         /** gets all gunmods in the item */
         std::vector<const item *> gunmods() const;
+        // all magazines compatible with any pockets.
+        // this only checks MAGAZINE_WELL
+        std::set<itype_id> magazine_compatible() const;
         /**
          * This function is to aid migration to using nested containers.
          * The call sites of this function need to be updated to search the
@@ -87,13 +95,24 @@ class item_contents
         units::volume item_size_modifier() const;
         units::mass item_weight_modifier() const;
 
+        // gets the total weight capacity of all pockets
+        units::mass total_container_weight_capacity() const;
+
         /**
           * gets the total volume available to be used.
           * does not guarantee that an item of that size can be inserted.
           */
         units::volume total_container_capacity() const;
+
+        // Gets the total volume of every is_standard_type container
+        units::volume total_standard_capacity() const;
+
         units::volume remaining_container_capacity() const;
         units::volume total_contained_volume() const;
+
+        // gets all pockets contained in this item
+        ret_val<std::vector<item_pocket>> get_all_contained_pockets() const;
+
         // gets the number of charges of liquid that can fit into the rest of the space
         int remaining_capacity_for_liquid( const item &liquid ) const;
 
@@ -101,13 +120,18 @@ class item_contents
          * between 0 and 1 indicating the position between minimum and maximum
          * contribution it's currently making.  Otherwise, return 0 */
         float relative_encumbrance() const;
-        /** True iff every pocket is rigid */
+        /** True if every pocket is rigid or we have no pockets */
         bool all_pockets_rigid() const;
+
+        // True if every pocket is rigid. False if not or we have no pockets
+        bool contents_are_rigid() const;
 
         /** returns the best quality of the id that's contained in the item in CONTAINER pockets */
         int best_quality( const quality_id &id ) const;
 
         // what will the move cost be of taking @it out of this container?
+        // should only be used from item_location if possible, to account for
+        // player inventory handling penalties from traits
         int obtain_cost( const item &it ) const;
         // what will the move cost be of storing @it into this container? (CONTAINER pocket type)
         int insert_cost( const item &it ) const;
@@ -123,6 +147,11 @@ class item_contents
          * plus whole stacks of items that are
          */
         size_t num_item_stacks() const;
+
+        /**
+         * Open a menu for the player to set pocket favorite settings for the pockets in this item_contents
+         */
+        void favorite_settings_menu( const std::string &item_name );
 
         item_pocket *contained_where( const item &contained );
         void on_pickup( Character &guy );
@@ -142,9 +171,11 @@ class item_contents
 
         // heats up the contents if they have temperature
         void heat_up();
-        // returns qty - need
-        int ammo_consume( int qty );
+        // returns amount of ammo consumed
+        int ammo_consume( int qty, const tripoint &pos );
         item *magazine_current();
+        std::set<ammotype> ammo_types() const;
+        int ammo_capacity( const ammotype &ammo ) const;
         // gets the first ammo in all magazine pockets
         // does not support multiple magazine pockets!
         item &first_ammo();
@@ -176,7 +207,7 @@ class item_contents
          * NOTE: this destroys the items that get processed
          */
         void process( player *carrier, const tripoint &pos, bool activate, float insulation = 1,
-                      temperature_flag flag = temperature_flag::TEMP_NORMAL, float spoil_multiplier_parent = 1.0f );
+                      temperature_flag flag = temperature_flag::NORMAL, float spoil_multiplier_parent = 1.0f );
 
         void migrate_item( item &obj, const std::set<itype_id> &migrations );
         bool item_has_uses_recursive() const;

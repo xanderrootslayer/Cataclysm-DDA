@@ -509,7 +509,7 @@ bool talk_function::display_and_choose_opts( mission_data &mission_key, const tr
             .viewport_size( info_height + 1 )
             .apply( w_list );
         }
-        wrefresh( w_list );
+        wnoutrefresh( w_list );
         werase( w_info );
 
         // Fold mission text, store it for scrolling
@@ -536,12 +536,12 @@ bool talk_function::display_and_choose_opts( mission_data &mission_key, const tr
                                 mission_text[start_line + info_offset] );
         }
 
-        wrefresh( w_info );
+        wnoutrefresh( w_info );
 
         if( role_id == "FACTION_CAMP" ) {
             werase( w_tabs );
             draw_camp_tabs( w_tabs, tab_mode, mission_key.entries );
-            wrefresh( w_tabs );
+            wnoutrefresh( w_tabs );
         }
     } );
 
@@ -670,10 +670,6 @@ bool talk_function::handle_outpost_mission( const mission_entry &cur_key, npc &p
     if( cur_key.id == "Recover Ally from Foraging" ) {
         forage_return( p );
     }
-
-    g->draw_ter();
-    wrefresh( g->w_terrain );
-    g->draw_panels( true );
 
     return true;
 }
@@ -1886,7 +1882,7 @@ npc_ptr talk_function::companion_choose( const std::map<skill_id, int> &required
             basecamp *player_camp = *bcp;
             std::vector<npc_ptr> camp_npcs = player_camp->get_npcs_assigned();
             if( std::any_of( camp_npcs.begin(), camp_npcs.end(),
-            [guy]( npc_ptr i ) {
+            [guy]( const npc_ptr & i ) {
             return i == guy;
         } ) ) {
                 available.push_back( guy );
@@ -1899,7 +1895,7 @@ npc_ptr talk_function::companion_choose( const std::map<skill_id, int> &required
                 basecamp *temp_camp = *guy_camp;
                 std::vector<npc_ptr> assigned_npcs = temp_camp->get_npcs_assigned();
                 if( std::any_of( assigned_npcs.begin(), assigned_npcs.end(),
-                [guy]( npc_ptr i ) {
+                [guy]( const npc_ptr & i ) {
                 return i == guy;
             } ) ) {
                     available.push_back( guy );
@@ -2080,7 +2076,7 @@ void talk_function::loot_building( const tripoint &site )
         map_stack items = bay.i_at( p );
         for( map_stack::iterator it = items.begin(); it != items.end(); ) {
             if( ( ( it->is_food() || it->is_food_container() ) && !one_in( 8 ) ) ||
-                ( it->made_of( LIQUID ) && !one_in( 8 ) ) ||
+                ( it->made_of( phase_id::LIQUID ) && !one_in( 8 ) ) ||
                 ( it->price( true ) > 1000 && !one_in( 4 ) ) || one_in( 5 ) ) {
                 it = items.erase( it );
             } else {

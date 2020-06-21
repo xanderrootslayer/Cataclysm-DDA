@@ -72,6 +72,7 @@ void clear_character( player &dummy, bool debug_storage )
     dummy.consume( food );
 
     dummy.empty_skills();
+    dummy.martial_arts_data.clear_styles();
     dummy.clear_morale();
     dummy.clear_bionics();
     dummy.activity.set_to_null();
@@ -83,7 +84,7 @@ void clear_character( player &dummy, bool debug_storage )
 
     // Restore all stamina and go to walk mode
     dummy.set_stamina( dummy.get_stamina_max() );
-    dummy.set_movement_mode( CMM_WALK );
+    dummy.set_movement_mode( move_mode_id( "walk" ) );
     dummy.reset_activity_level();
 
     // Make sure we don't carry around weird effects.
@@ -176,6 +177,12 @@ void give_and_activate_bionic( player &p, bionic_id const &bioid )
 item tool_with_ammo( const std::string &tool, const int qty )
 {
     item tool_it( tool );
-    tool_it.ammo_set( tool_it.ammo_default(), qty );
+    if( !tool_it.ammo_default().is_null() ) {
+        tool_it.ammo_set( tool_it.ammo_default(), qty );
+    } else if( !tool_it.magazine_default().is_null() ) {
+        item tool_it_mag( tool_it.magazine_default() );
+        tool_it_mag.ammo_set( tool_it_mag.ammo_default(), qty );
+        tool_it.put_in( tool_it_mag, item_pocket::pocket_type::MAGAZINE_WELL );
+    }
     return tool_it;
 }

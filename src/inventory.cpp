@@ -36,7 +36,6 @@
 #include "inventory_ui.h" // auto inventory blocking
 
 static const itype_id itype_aspirin( "aspirin" );
-static const itype_id itype_battery( "battery" );
 static const itype_id itype_codeine( "codeine" );
 static const itype_id itype_heroin( "heroin" );
 static const itype_id itype_salt_water( "salt_water" );
@@ -199,7 +198,7 @@ inventory &inventory::operator+= ( const item &rhs )
 inventory &inventory::operator+= ( const item_stack &rhs )
 {
     for( const auto &p : rhs ) {
-        if( !p.made_of( LIQUID ) ) {
+        if( !p.made_of( phase_id::LIQUID ) ) {
             add_item( p, true );
         }
     }
@@ -454,19 +453,25 @@ void inventory::form_from_map( map &m, std::vector<tripoint> pts, const Characte
             if( type != nullptr ) {
                 const itype *ammo = f.crafting_ammo_item_type();
                 item furn_item( type, calendar::turn, 0 );
+                if( furn_item.contents.has_pocket_type( item_pocket::pocket_type::MAGAZINE ) ) {
+                    // NOTE: This only works if the pseudo item has a MAGAZINE pocket, not a MAGAZINE_WELL!
+                    item furn_ammo( ammo, calendar::turn, count_charges_in_list( ammo, m.i_at( p ) ) );
+                    furn_item.put_in( furn_ammo, item_pocket::pocket_type::MAGAZINE );
+                } else {
+                    debugmsg( "ERROR: Furniture crafting pseudo item does not have magazine for ammo" );
+                }
                 furn_item.item_tags.insert( "PSEUDO" );
-                furn_item.charges = ammo ? count_charges_in_list( ammo, m.i_at( p ) ) : 0;
                 add_item( furn_item );
             }
         }
         if( m.accessible_items( p ) ) {
-            for( auto &i : m.i_at( p ) ) {
+            for( item &i : m.i_at( p ) ) {
                 // if it's *the* player requesting this from from map inventory
                 // then don't allow items owned by another faction to be factored into recipe components etc.
                 if( pl && !i.is_owned_by( *pl, true ) ) {
                     continue;
                 }
-                if( !i.made_of( LIQUID ) ) {
+                if( !i.made_of( phase_id::LIQUID ) ) {
                     add_item( i, false, assign_invlet );
                 }
             }
@@ -486,7 +491,7 @@ void inventory::form_from_map( map &m, std::vector<tripoint> pts, const Characte
         // crafting
         if( m.furn( p ).obj().examine == &iexamine::toilet ) {
             // get water charges at location
-            auto toilet = m.i_at( p );
+            map_stack toilet = m.i_at( p );
             auto water = toilet.end();
             for( auto candidate = toilet.begin(); candidate != toilet.end(); ++candidate ) {
                 if( candidate->typeId() == itype_water ) {
@@ -501,9 +506,9 @@ void inventory::form_from_map( map &m, std::vector<tripoint> pts, const Characte
 
         // keg-kludge
         if( m.furn( p ).obj().examine == &iexamine::keg ) {
-            auto liq_contained = m.i_at( p );
+            map_stack liq_contained = m.i_at( p );
             for( auto &i : liq_contained ) {
-                if( i.made_of( LIQUID ) ) {
+                if( i.made_of( phase_id::LIQUID ) ) {
                     add_item( i );
                 }
             }
@@ -538,18 +543,23 @@ void inventory::form_from_map( map &m, std::vector<tripoint> pts, const Characte
         if( faupart ) {
             for( const auto &it : veh->fuels_left() ) {
                 item fuel( it.first, 0 );
-                if( fuel.made_of( LIQUID ) ) {
+                if( fuel.made_of( phase_id::LIQUID ) ) {
                     fuel.charges = it.second;
                     add_item( fuel );
                 }
             }
         }
-
+        const auto item_with_battery = []( const std::string & id, const int qty ) {
+            item it( id );
+            item it_batt( it.magazine_default() );
+            it_batt.ammo_set( it_batt.ammo_default(), qty );
+            it.put_in( it_batt, item_pocket::pocket_type::MAGAZINE_WELL );
+            it.item_tags.insert( "PSEUDO" );
+            return it;
+        };
+        int veh_battery = veh->fuel_left( itype_id( "battery" ), true );
         if( kpart ) {
-            int veh_battery = veh->fuel_left( itype_battery, true );
-            item hotplate( "hotplate", 0 );
-            hotplate.ammo_set( hotplate.ammo_default(), veh_battery );
-            hotplate.item_tags.insert( "PSEUDO" );
+            item hotplate = item_with_battery( "hotplate", veh_battery );
             add_item( hotplate );
 
             item pot( "pot", 0 );
@@ -560,63 +570,37 @@ void inventory::form_from_map( map &m, std::vector<tripoint> pts, const Characte
             add_item( pan );
         }
         if( weldpart ) {
-            int veh_battery = veh->fuel_left( itype_battery, true );
-            item welder( "welder", 0 );
-            welder.ammo_set( welder.ammo_default(), veh_battery );
-            welder.item_tags.insert( "PSEUDO" );
+            item welder = item_with_battery( "welder", veh_battery );
             add_item( welder );
-
-            item soldering_iron( "soldering_iron", 0 );
-            soldering_iron.ammo_set( soldering_iron.ammo_default(), veh_battery );
-            soldering_iron.item_tags.insert( "PSEUDO" );
+            item soldering_iron = item_with_battery( "soldering_iron", veh_battery );
             add_item( soldering_iron );
         }
         if( craftpart ) {
-            int veh_battery = veh->fuel_left( itype_battery, true );
-            item vac_sealer( "vac_sealer", 0 );
-            vac_sealer.ammo_set( vac_sealer.ammo_default(), veh_battery );
-            vac_sealer.item_tags.insert( "PSEUDO" );
+            item vac_sealer = item_with_battery( "vac_sealer", veh_battery );
             add_item( vac_sealer );
 
-            item dehydrator( "dehydrator", 0 );
-            dehydrator.ammo_set( dehydrator.ammo_default(), veh_battery ) ;
-            dehydrator.item_tags.insert( "PSEUDO" );
+            item dehydrator = item_with_battery( "dehydrator", veh_battery );
             add_item( dehydrator );
 
-            item food_processor( "food_processor", 0 );
-            food_processor.ammo_set( food_processor.ammo_default(), veh_battery ) ;
-            food_processor.item_tags.insert( "PSEUDO" );
+            item food_processor = item_with_battery( "food_processor", veh_battery );
             add_item( food_processor );
 
-            item press( "press", 0 );
-            press.ammo_set( press.ammo_default(), veh_battery );
-            press.item_tags.insert( "PSEUDO" );
+            item press = item_with_battery( "press", veh_battery );
             add_item( press );
         }
         if( forgepart ) {
-            int veh_battery = veh->fuel_left( itype_battery, true );
-            item forge( "forge", 0 );
-            forge.ammo_set( forge.ammo_default(), veh_battery );
-            forge.item_tags.insert( "PSEUDO" );
+            item forge = item_with_battery( "forge", veh_battery );
             add_item( forge );
         }
         if( kilnpart ) {
-            int veh_battery = veh->fuel_left( itype_battery, true );
-            item kiln( "kiln", 0 );
-            kiln.ammo_set( kiln.ammo_default(), veh_battery );
-            kiln.item_tags.insert( "PSEUDO" );
+            item kiln = item_with_battery( "kiln", veh_battery );
             add_item( kiln );
         }
         if( chempart ) {
-            int veh_battery = veh->fuel_left( itype_battery, true );
-            item chemistry_set( "chemistry_set", 0 );
-            chemistry_set.ammo_set( chemistry_set.ammo_default(), veh_battery );
-            chemistry_set.item_tags.insert( "PSEUDO" );
+            item chemistry_set = item_with_battery( "chemistry_set", veh_battery );
             add_item( chemistry_set );
 
-            item electrolysis_kit( "electrolysis_kit", 0 );
-            electrolysis_kit.ammo_set( electrolysis_kit.ammo_default(), veh_battery );
-            electrolysis_kit.item_tags.insert( "PSEUDO" );
+            item electrolysis_kit = item_with_battery( "electrolysis_kit", veh_battery );
             add_item( electrolysis_kit );
         }
     }
@@ -779,7 +763,7 @@ int inventory::position_by_type( const itype_id &type ) const
     return INT_MIN;
 }
 
-std::list<item> inventory::use_amount( itype_id it, int quantity,
+std::list<item> inventory::use_amount( const itype_id &it, int quantity,
                                        const std::function<bool( const item & )> &filter )
 {
     items.sort( stack_compare );
@@ -1049,7 +1033,7 @@ void inventory::assign_empty_invlet( item &it, const Character &p, const bool fo
 
     invlets_bitset cur_inv = p.allocated_invlets();
     itype_id target_type = it.typeId();
-    for( auto iter : assigned_invlet ) {
+    for( const auto &iter : assigned_invlet ) {
         if( iter.second == target_type && !cur_inv[iter.first] ) {
             it.invlet = iter.first;
             return;

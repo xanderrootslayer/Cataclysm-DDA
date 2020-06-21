@@ -21,7 +21,7 @@ static const itype_id itype_meat_tainted( "meat_tainted" );
 static const itype_id itype_veggy( "veggy" );
 static const itype_id itype_veggy_tainted( "veggy_tainted" );
 
-static const species_id MOLLUSK( "MOLLUSK" );
+static const species_id species_MOLLUSK( "MOLLUSK" );
 
 mtype::mtype()
 {
@@ -29,11 +29,11 @@ mtype::mtype()
     name = pl_translation( "human", "humans" );
     sym = " ";
     color = c_white;
-    size = MS_MEDIUM;
+    size = creature_size::medium;
     volume = 62499_ml;
     weight = 81499_gram;
     mat = { material_id( "flesh" ) };
-    phase = SOLID;
+    phase = phase_id::SOLID;
     def_chance = 0;
     upgrades = false;
     half_life = -1;
@@ -176,7 +176,7 @@ field_type_id mtype::bloodType() const
 
 field_type_id mtype::gibType() const
 {
-    if( has_flag( MF_LARVA ) || in_species( MOLLUSK ) ) {
+    if( has_flag( MF_LARVA ) || in_species( species_MOLLUSK ) ) {
         return fd_gibs_invertebrate;
     }
     if( made_of( material_id( "veggy" ) ) ) {

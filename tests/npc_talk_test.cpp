@@ -190,7 +190,7 @@ TEST_CASE( "npc_talk_wearing_and_trait", "[npc_talk]" )
     dialogue d;
     npc &talker_npc = prep_test( d );
 
-    for( trait_id tr : g->u.get_mutations() ) {
+    for( const trait_id &tr : g->u.get_mutations() ) {
         g->u.unset_mutation( tr );
     }
 
@@ -366,7 +366,7 @@ TEST_CASE( "npc_talk_needs", "[npc_talk]" )
     CHECK( d.responses[0].text == "This is a basic test response." );
     talker_npc.set_thirst( 90 );
     talker_npc.set_hunger( 90 );
-    talker_npc.set_fatigue( EXHAUSTED );
+    talker_npc.set_fatigue( fatigue_levels::EXHAUSTED );
     gen_response_lines( d, 4 );
     CHECK( d.responses[0].text == "This is a basic test response." );
     CHECK( d.responses[1].text == "This is a npc thirst test response." );

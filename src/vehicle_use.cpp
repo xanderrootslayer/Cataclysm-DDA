@@ -23,6 +23,7 @@
 #include "int_id.h"
 #include "inventory.h"
 #include "item.h"
+#include "item_factory.h"
 #include "itype.h"
 #include "iuse.h"
 #include "json.h"
@@ -52,7 +53,6 @@
 #include "vpart_range.h"
 #include "weather.h"
 
-static const activity_id ACT_HOTWIRE_CAR( "ACT_HOTWIRE_CAR" );
 static const activity_id ACT_RELOAD( "ACT_RELOAD" );
 static const activity_id ACT_REPAIR_ITEM( "ACT_REPAIR_ITEM" );
 static const activity_id ACT_START_ENGINES( "ACT_START_ENGINES" );
@@ -75,11 +75,11 @@ static const itype_id itype_welder( "welder" );
 static const efftype_id effect_harnessed( "harnessed" );
 static const efftype_id effect_tied( "tied" );
 
-static const fault_id fault_diesel( "fault_engine_pump_diesel" );
-static const fault_id fault_glowplug( "fault_engine_glow_plug" );
-static const fault_id fault_immobiliser( "fault_engine_immobiliser" );
-static const fault_id fault_pump( "fault_engine_pump_fuel" );
-static const fault_id fault_starter( "fault_engine_starter" );
+static const fault_id fault_engine_pump_diesel( "fault_engine_pump_diesel" );
+static const fault_id fault_engine_glow_plug( "fault_engine_glow_plug" );
+static const fault_id fault_engine_immobiliser( "fault_engine_immobiliser" );
+static const fault_id fault_engine_pump_fuel( "fault_engine_pump_fuel" );
+static const fault_id fault_engine_starter( "fault_engine_starter" );
 
 static const skill_id skill_mechanics( "mechanics" );
 
@@ -433,40 +433,29 @@ int vehicle::select_engine()
 
 bool vehicle::interact_vehicle_locked()
 {
-    if( is_locked ) {
-        const inventory &crafting_inv = g->u.crafting_inventory();
-        add_msg( _( "You don't find any keys in the %s." ), name );
-        if( crafting_inv.has_quality( quality_id( "SCREW" ) ) ) {
-            if( query_yn( _( "You don't find any keys in the %s. Attempt to hotwire vehicle?" ),
-                          name ) ) {
-                ///\EFFECT_MECHANICS speeds up vehicle hotwiring
-                int mechanics_skill = g->u.get_skill_level( skill_mechanics );
-                const int hotwire_time = 6000 / ( ( mechanics_skill > 0 ) ? mechanics_skill : 1 );
-                const int moves = to_moves<int>( time_duration::from_turns( hotwire_time ) );
-                //assign long activity
-                g->u.assign_activity( ACT_HOTWIRE_CAR, moves, -1, INT_MIN, _( "Hotwire" ) );
-                // use part 0 as the reference point
-                point q = coord_translate( parts[0].mount );
-                const tripoint abs_veh_pos = g->m.getabs( global_pos3() );
-                //[0]
-                g->u.activity.values.push_back( abs_veh_pos.x + q.x );
-                //[1]
-                g->u.activity.values.push_back( abs_veh_pos.y + q.y );
-                //[2]
-                g->u.activity.values.push_back( g->u.get_skill_level( skill_mechanics ) );
-            } else {
-                if( has_security_working() && query_yn( _( "Trigger the %s's Alarm?" ), name ) ) {
-                    is_alarm_on = true;
-                } else {
-                    add_msg( _( "You leave the controls alone." ) );
-                }
-            }
-        } else {
-            add_msg( _( "You could use a screwdriver to hotwire it." ) );
-        }
+    if( !is_locked ) {
+        return true;
     }
 
-    return !( is_locked );
+    add_msg( _( "You don't find any keys in the %s." ), name );
+    const inventory &inv = g->u.crafting_inventory();
+    if( inv.has_quality( quality_id( "SCREW" ) ) ) {
+        if( query_yn( _( "You don't find any keys in the %s. Attempt to hotwire vehicle?" ), name ) ) {
+            ///\EFFECT_MECHANICS speeds up vehicle hotwiring
+            int skill = g->u.get_skill_level( skill_mechanics );
+            const int moves = to_moves<int>( 6000_seconds / ( ( skill > 0 ) ? skill : 1 ) );
+            tripoint target = g->m.getabs( global_pos3() ) + coord_translate( parts[0].mount );
+            g->u.assign_activity( hotwire_car_activity_actor( moves, target ) );
+        } else if( has_security_working() && query_yn( _( "Trigger the %s's Alarm?" ), name ) ) {
+            is_alarm_on = true;
+        } else {
+            add_msg( _( "You leave the controls alone." ) );
+        }
+    } else {
+        add_msg( _( "You could use a screwdriver to hotwire it." ) );
+    }
+
+    return false;
 }
 
 void vehicle::smash_security_system()
@@ -803,8 +792,8 @@ bool vehicle::fold_up()
 
     add_msg( _( "You painstakingly pack the %s into a portable configuration." ), name );
 
-    if( g->u.get_grab_type() != OBJECT_NONE ) {
-        g->u.grab( OBJECT_NONE );
+    if( g->u.get_grab_type() != object_type::NONE ) {
+        g->u.grab( object_type::NONE );
         add_msg( _( "You let go of %s as you fold it." ), name );
     }
 
@@ -871,7 +860,7 @@ double vehicle::engine_cold_factor( const int e ) const
     }
 
     int eff_temp = g->weather.get_temperature( g->u.pos() );
-    if( !parts[ engines[ e ] ].faults().count( fault_glowplug ) ) {
+    if( !parts[ engines[ e ] ].faults().count( fault_engine_glow_plug ) ) {
         eff_temp = std::min( eff_temp, 20 );
     }
 
@@ -952,7 +941,7 @@ bool vehicle::start_engine( const int e )
     }
 
     // Immobilizers need removing before the vehicle can be started
-    if( eng.faults().count( fault_immobiliser ) ) {
+    if( eng.faults().count( fault_engine_immobiliser ) ) {
         sounds::sound( pos, 5, sounds::sound_t::alarm,
                        string_format( _( "the %s making a long beep" ), eng.name() ), true, "vehicle",
                        "fault_immobiliser_beep" );
@@ -960,8 +949,8 @@ bool vehicle::start_engine( const int e )
     }
 
     // Engine with starter motors can fail on both battery and starter motor
-    if( eng.faults_potential().count( fault_starter ) ) {
-        if( eng.faults().count( fault_starter ) ) {
+    if( eng.faults_potential().count( fault_engine_starter ) ) {
+        if( eng.faults().count( fault_engine_starter ) ) {
             sounds::sound( pos, eng.info().engine_noise_factor(), sounds::sound_t::alarm,
                            string_format( _( "the %s clicking once" ), eng.name() ), true, "vehicle",
                            "engine_single_click_fail" );
@@ -980,7 +969,8 @@ bool vehicle::start_engine( const int e )
     }
 
     // Engines always fail to start with faulty fuel pumps
-    if( eng.faults().count( fault_pump ) || eng.faults().count( fault_diesel ) ) {
+    if( eng.faults().count( fault_engine_pump_fuel ) ||
+        eng.faults().count( fault_engine_pump_diesel ) ) {
         sounds::sound( pos, eng.info().engine_noise_factor(), sounds::sound_t::movement,
                        string_format( _( "the %s quickly stuttering out." ), eng.name() ), true, "vehicle",
                        "engine_stutter_fail" );
@@ -1871,7 +1861,6 @@ void vehicle::use_bike_rack( int part )
     }
     if( success ) {
         g->m.invalidate_map_cache( g->get_levz() );
-        g->refresh_all();
     }
 }
 
@@ -2029,8 +2018,8 @@ void vehicle::interact_with( const tripoint &pos, int interact_part )
         if( fuel_left( itype_battery, true ) < pseudo.ammo_required() ) {
             return false;
         }
-        auto capacity = pseudo.ammo_capacity( true );
-        auto qty = capacity - discharge_battery( capacity );
+        int capacity = pseudo.ammo_capacity( ammotype( "battery" ) );
+        int qty = capacity - discharge_battery( capacity );
         pseudo.ammo_set( itype_battery, qty );
         g->u.invoke_item( &pseudo );
         charge_battery( pseudo.ammo_remaining() );
@@ -2082,7 +2071,7 @@ void vehicle::interact_with( const tripoint &pos, int interact_part )
         case DRINK: {
             item water( "water_clean", 0 );
             if( g->u.can_consume( water ) ) {
-                g->u.assign_activity( player_activity( consume_activity_actor( water, false ) ) );
+                g->u.assign_activity( player_activity( consume_activity_actor( water ) ) );
                 drain( itype_water_clean, 1 );
             }
             return;
@@ -2185,5 +2174,4 @@ void vehicle::interact_with( const tripoint &pos, int interact_part )
             return;
         }
     }
-    return;
 }

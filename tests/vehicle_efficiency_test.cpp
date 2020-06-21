@@ -32,7 +32,7 @@
 
 using efficiency_stat = statistics<int>;
 
-const efftype_id effect_blind( "blind" );
+static const efftype_id effect_blind( "blind" );
 
 static void clear_game( const ter_id &terrain )
 {
@@ -76,7 +76,7 @@ static std::map<itype_id, int> set_vehicle_fuel( vehicle &v, const float veh_fue
     REQUIRE( actually_used.size() <= 1 );
     itype_id liquid_fuel = itype_id::NULL_ID();
     for( const auto &ft : actually_used ) {
-        if( item::find_type( ft )->phase == LIQUID ) {
+        if( item::find_type( ft )->phase == phase_id::LIQUID ) {
             liquid_fuel = ft;
             break;
         }
@@ -85,14 +85,16 @@ static std::map<itype_id, int> set_vehicle_fuel( vehicle &v, const float veh_fue
     // Set fuel to a given percentage
     // Batteries are special cased because they aren't liquid fuel
     std::map<itype_id, int> ret;
+    const itype_id itype_battery( "battery" );
+    const ammotype ammo_battery( "battery" );
     for( const vpart_reference vp : v.get_all_parts() ) {
         vehicle_part &pt = vp.part();
 
         if( pt.is_battery() ) {
-            pt.ammo_set( itype_id( "battery" ), pt.ammo_capacity() * veh_fuel_mult );
-            ret[ itype_id( "battery" ) ] += pt.ammo_capacity() * veh_fuel_mult;
+            pt.ammo_set( itype_battery, pt.ammo_capacity( ammo_battery ) * veh_fuel_mult );
+            ret[itype_battery] += pt.ammo_capacity( ammo_battery ) * veh_fuel_mult;
         } else if( pt.is_tank() && !liquid_fuel.is_null() ) {
-            float qty = pt.ammo_capacity() * veh_fuel_mult;
+            float qty = pt.ammo_capacity( item::find_type( liquid_fuel )->ammo->type ) * veh_fuel_mult;
             qty *= std::max( item::find_type( liquid_fuel )->stack_size, 1 );
             qty /= to_milliliter( units::legacy_volume_factor );
             pt.ammo_set( liquid_fuel, qty );
@@ -333,7 +335,7 @@ static void print_test_strings( const std::string &type )
 }
 
 static void test_vehicle(
-    std::string type, int expected_mass,
+    const std::string &type, int expected_mass,
     const int pavement_target, const int dirt_target,
     const int pavement_target_w_stops, const int dirt_target_w_stops,
     const int pavement_target_smooth_stops = 0, const int dirt_target_smooth_stops = 0 )
@@ -413,10 +415,10 @@ TEST_CASE( "vehicle_make_efficiency_case", "[.]" )
 // Fix test for electric vehicles
 TEST_CASE( "vehicle_efficiency", "[vehicle] [engine]" )
 {
-    test_vehicle( "beetle", 815669, 277800, 211800, 70490, 53160 );
+    test_vehicle( "beetle", 816469, 277800, 211800, 70490, 53160 );
     test_vehicle( "car", 1120618, 473700, 277500, 45440, 25170 );
-    test_vehicle( "car_sports", 1154214, 360300, 260700, 36450, 20770 );
-    test_vehicle( "electric_car", 1046335, 220900, 127900, 18490, 9907 );
+    test_vehicle( "car_sports", 1155014, 360300, 260700, 36420, 20740 );
+    test_vehicle( "electric_car", 1047135, 220900, 127900, 18490, 9907 );
     test_vehicle( "suv", 1320286, 902100, 451700, 67740, 30810 );
     test_vehicle( "motorcycle", 163085, 74030, 61180, 46200, 38100 );
     test_vehicle( "quad_bike", 265345, 73170, 73170, 34300, 34300 );

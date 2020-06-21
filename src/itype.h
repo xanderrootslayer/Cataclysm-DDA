@@ -559,7 +559,7 @@ namespace std
 
 template<>
 struct hash<gun_type_type> {
-    size_t operator()( const gun_type_type &t ) const {
+    size_t operator()( const gun_type_type &t ) const noexcept {
         return hash<std::string>()( t.name_ );
     }
 };
@@ -638,20 +638,11 @@ struct islot_magazine {
     /** Default type of ammo contained by a magazine (often set for ammo belts) */
     itype_id default_ammo = itype_id::NULL_ID();
 
-    /**
-     * How reliable this magazine on a range of 0 to 10?
-     * @see doc/GAME_BALANCE.md
-     */
-    int reliability = 0;
-
     /** How long it takes to load each unit of ammo into the magazine */
     int reload_time = 100;
 
     /** For ammo belts one linkage (of given type) is dropped for each unit of ammo consumed */
     cata::optional<itype_id> linkage;
-
-    /** If false, ammo will cook off if this mag is affected by fire */
-    bool protects_contents = false;
 };
 
 struct islot_battery {
@@ -813,6 +804,13 @@ struct conditional_name {
     translation name;
 };
 
+class islot_milling
+{
+    public:
+        itype_id into_;
+        double conversion_rate_;
+};
+
 struct itype {
         friend class Item_factory;
 
@@ -840,6 +838,7 @@ struct itype {
         cata::value_ptr<islot_seed> seed;
         cata::value_ptr<islot_artifact> artifact;
         cata::value_ptr<relic> relic_data;
+        cata::value_ptr<islot_milling> milling_data;
         /*@}*/
 
         // a hint for tilesets: if it doesn't have a tile, what does it look like?
@@ -884,7 +883,7 @@ struct itype {
         int min_int = 0;
         int min_per = 0;
 
-        phase_id phase      = SOLID; // e.g. solid, liquid, gas
+        phase_id phase      = phase_id::SOLID; // e.g. solid, liquid, gas
 
         // How should the item explode
         explosion_data explosion;
@@ -971,7 +970,7 @@ struct itype {
         // information related to being able to store things inside the item.
         std::vector<pocket_data> pockets;
 
-        layer_level layer = layer_level::MAX_CLOTHING_LAYER;
+        layer_level layer = layer_level::NUM_LAYER_LEVELS;
 
         /**
          * How much insulation this item provides, either as a container, or as

@@ -11,7 +11,6 @@
 
 #include "bodypart.h"
 #include "calendar.h"
-#include "character.h"
 #include "flat_set.h"
 #include "optional.h"
 #include "translations.h"
@@ -21,7 +20,10 @@
 class JsonIn;
 class JsonObject;
 class JsonOut;
+class Character;
 class player;
+
+enum class character_stat : char;
 
 struct bionic_data {
     bionic_data();
@@ -40,8 +42,6 @@ struct bionic_data {
     int charge_time = 0;
     /** Power bank size **/
     units::energy capacity = 0_kJ;
-
-
     /** Is true if a bionic is an active instead of a passive bionic */
     bool activated = false;
     /**
@@ -53,7 +53,7 @@ struct bionic_data {
     /**Bonus to weight capacity*/
     units::mass weight_capacity_bonus = 0_gram;
     /**Map of stats and their corresponding bonuses passively granted by a bionic*/
-    std::map<Character::stat, int> stat_bonus;
+    std::map<character_stat, int> stat_bonus;
     /**This bionic draws power through a cable*/
     bool is_remote_fueled = false;
     /**Fuel types that can be used by this bionic*/
@@ -80,6 +80,8 @@ struct bionic_data {
     /**Amount of bullet protection offered by this bionic*/
     std::map<bodypart_str_id, size_t> bullet_protec;
 
+    float vitamin_absorb_mod = 1.0f;
+
     /** bionic enchantments */
     std::vector<enchantment_id> enchantments;
 
@@ -90,7 +92,7 @@ struct bionic_data {
     /**
      * Body part encumbered by this bionic, mapped to the amount of encumbrance caused.
      */
-    std::map<body_part, int> encumbrance;
+    std::map<bodypart_str_id, int> encumbrance;
     /**
      * Fake item created for crafting with this bionic available.
      * Also the item used for gun bionics.
@@ -135,7 +137,7 @@ struct bionic_data {
     bool is_included( const bionic_id &id ) const;
 
     bool was_loaded = false;
-    void load( const JsonObject &obj, std::string );
+    void load( const JsonObject &obj, const std::string & );
     static void load_bionic( const JsonObject &jo, const std::string &src );
     static const std::vector<bionic_data> &get_all();
     static void check_bionic_consistency();

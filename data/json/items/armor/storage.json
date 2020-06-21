@@ -424,8 +424,7 @@
     "color": "green",
     "covers": [ "TORSO" ],
     "coverage": 35,
-    "encumbrance": 2,
-    "max_encumbrance": 15,
+    "encumbrance": 25,
     "longest_side": "900 cm",
     "//": "The main section of the golf bag actually assumes things will stick out of it, but specifically contains them, so some extra wiggle room was added.",
     "pocket_data": [
@@ -679,8 +678,8 @@
     "pocket_data": [ { "pocket_type": "CONTAINER", "max_contains_volume": "4 L", "max_contains_weight": "16 kg", "moves": 300 } ],
     "warmth": 8,
     "material_thickness": 2,
-    "properties": [ [ "monster_size_capacity", "SMALL" ] ],
-    "use_action": "CAPTURE_MONSTER_ACT",
+    "properties": [ [ "creature_size_capacity", "SMALL" ] ],
+    "use_action": [ "CAPTURE_MONSTER_ACT" ],
     "flags": [ "BELTED", "WATERPROOF" ]
   },
   {
@@ -1054,5 +1053,34 @@
     "warmth": 5,
     "material_thickness": 2,
     "flags": [ "VARSIZE" ]
+  },
+  {
+    "id": "debug_backpack",
+    "type": "ARMOR",
+    "name": { "str": "debug pocket universe" },
+    "description": "A pocket universe.  Can store approximately 384 * 10^6 bugs.",
+    "weight": "1 g",
+    "volume": "1 L",
+    "price": 0,
+    "price_postapoc": 0,
+    "material": [ "cotton" ],
+    "symbol": "[",
+    "looks_like": "backpack",
+    "color": "yellow",
+    "encumbrance": 0,
+    "max_encumbrance": 0,
+    "pocket_data": [
+      {
+        "rigid": true,
+        "pocket_type": "CONTAINER",
+        "max_contains_volume": "100000 L",
+        "max_contains_weight": "100000 kg",
+        "moves": 1,
+        "max_item_length": "1 km"
+      }
+    ],
+    "warmth": 0,
+    "material_thickness": 0,
+    "flags": [ "BELTED", "WATER_FRIENDLY", "TARDIS" ]
   }
 ]
