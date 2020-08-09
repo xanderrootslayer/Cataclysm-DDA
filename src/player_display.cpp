@@ -1,7 +1,6 @@
-#include "player.h" // IWYU pragma: associated
-
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <cstddef>
 #include <cstdlib>
 #include <memory>
@@ -10,16 +9,24 @@
 #include "addiction.h"
 #include "avatar.h"
 #include "bionics.h"
+#include "bodypart.h"
 #include "cata_utility.h"
 #include "catacharset.h"
+#include "color.h"
 #include "debug.h"
 #include "effect.h"
+#include "enum_conversions.h"
 #include "game.h"
 #include "input.h"
+#include "int_id.h"
 #include "mutation.h"
 #include "options.h"
 #include "output.h"
+#include "pimpl.h"
+#include "player.h" // IWYU pragma: associated
+#include "pldata.h"
 #include "profession.h"
+#include "proficiency.h"
 #include "skill.h"
 #include "string_formatter.h"
 #include "string_id.h"
@@ -27,7 +34,9 @@
 #include "translations.h"
 #include "ui_manager.h"
 #include "units.h"
+#include "units_utility.h"
 #include "weather.h"
+#include "weather_type.h"
 
 static const skill_id skill_swimming( "swimming" );
 
@@ -38,9 +47,11 @@ static const std::string title_SPEED = translate_marker( "SPEED" );
 static const std::string title_SKILLS = translate_marker( "SKILLS" );
 static const std::string title_BIONICS = translate_marker( "BIONICS" );
 static const std::string title_TRAITS = translate_marker( "TRAITS" );
+static const std::string title_PROFICIENCIES = translate_marker( "PROFICIENCIES" );
 
 // use this instead of having to type out 26 spaces like before
 static const std::string header_spaces( 26, ' ' );
+static const unsigned int grid_width = 26;
 
 // Rescale temperature value to one that the player sees
 static int temperature_print_rescaling( int temp )
@@ -48,26 +59,21 @@ static int temperature_print_rescaling( int temp )
     return ( temp / 100.0 ) * 2 - 100;
 }
 
-static bodypart_id other_part( const bodypart_id &bp )
-{
-    return bp->opposite_part;
-}
-
 static bool should_combine_bps( const player &p, const bodypart_id &l, const bodypart_id &r,
                                 const item *selected_clothing )
 {
-    const encumbrance_data enc_l = p.get_part_encumbrance_data( l );
-    const encumbrance_data enc_r = p.get_part_encumbrance_data( r );
+    const encumbrance_data &enc_l = p.get_part_encumbrance_data( l );
+    const encumbrance_data &enc_r = p.get_part_encumbrance_data( r );
 
     return l != r && // are different parts
-           l == other_part( r ) && r == other_part( l ) && // are complementary parts
+           l ==  r->opposite_part && r == l->opposite_part && // are complementary parts
            // same encumberance & temperature
            enc_l == enc_r &&
-           temperature_print_rescaling( p.temp_conv[l->token] ) == temperature_print_rescaling(
-               p.temp_conv[r->token] ) &&
+           temperature_print_rescaling( p.get_part_temp_conv( l ) ) == temperature_print_rescaling(
+               p.get_part_temp_conv( r ) ) &&
            // selected_clothing covers both or neither parts
-           ( !selected_clothing ||
-             ( selected_clothing->covers( l ) == selected_clothing->covers( r ) ) );
+           ( !selected_clothing || ( selected_clothing->covers( l ) == selected_clothing->covers( r ) ) );
+
 }
 
 static std::vector<std::pair<bodypart_id, bool>> list_and_combine_bps( const player &p,
@@ -77,12 +83,13 @@ static std::vector<std::pair<bodypart_id, bool>> list_and_combine_bps( const pla
     std::vector<std::pair<bodypart_id, bool>> bps;
     for( const bodypart_id &bp : p.get_all_body_parts() ) {
         // assuming that a body part has at most one other half
-        if( other_part( other_part( bp ) ) != bp ) {
+        if( bp->opposite_part->opposite_part != bp.id() ) {
             debugmsg( "Bodypart %d has more than one other half!", bp.id().c_str() );
         }
-        if( should_combine_bps( p, bp, other_part( bp ), selected_clothing ) ) {
-            if( bp < other_part( bp ) ) {
-                // only add the earlier one
+        if( should_combine_bps( p, bp, bp->opposite_part.id(), selected_clothing ) ) {
+            if( std::find( bps.begin(), bps.end(), std::pair<bodypart_id, bool>( bp->opposite_part.id(),
+                           true ) ) == bps.end() ) {
+                // only add one
                 bps.emplace_back( bp, true );
             }
         } else {
@@ -119,9 +126,11 @@ void player::print_encumbrance( const catacurses::window &win, const int line,
         if( static_cast<size_t>( thisline ) >= bps.size() ) {
             break;
         }
-        const bodypart_id bp = bps[thisline].first;
+
+        const bodypart_id &bp = bps[thisline].first;
         const bool combine = bps[thisline].second;
         const encumbrance_data &e = get_part_encumbrance_data( bp );
+
         const bool highlighted = selected_clothing ? selected_clothing->covers( bp ) : false;
         std::string out = body_part_name_as_heading( bp, combine ? 2 : 1 );
         if( utf8_width( out ) > 7 ) {
@@ -142,8 +151,8 @@ void player::print_encumbrance( const catacurses::window &win, const int line,
         // take into account the new encumbrance system for layers
         mvwprintz( win, point( 12, 1 + i ), encumb_color( e.encumbrance ), "%-3d", e.layer_penalty );
         // print warmth, tethered to right hand side of the window
-        mvwprintz( win, point( width - 6, 1 + i ), bodytemp_color( bp->token ), "(% 3d)",
-                   temperature_print_rescaling( temp_conv[bp->token] ) );
+        mvwprintz( win, point( width - 6, 1 + i ), bodytemp_color( bp ), "(% 3d)",
+                   temperature_print_rescaling( get_part_temp_conv( bp ) ) );
     }
 
     if( draw_scrollbar ) {
@@ -291,6 +300,7 @@ enum class player_display_tab : int {
     traits,
     bionics,
     effects,
+    proficiencies,
     num_tabs,
 };
 } // namespace
@@ -311,6 +321,76 @@ static player_display_tab prev_tab( const player_display_tab tab )
     } else {
         return static_cast<player_display_tab>( static_cast<int>( player_display_tab::num_tabs ) - 1 );
     }
+}
+
+static void draw_proficiencies_tab( const catacurses::window &win, const unsigned line,
+                                    const Character &guy, const player_display_tab curtab )
+{
+    werase( win );
+    const std::vector<display_proficiency> profs = guy.display_proficiencies();
+    bool focused = curtab == player_display_tab::proficiencies;
+    const nc_color title_color = focused ? h_light_gray : c_light_gray;
+    center_print( win, 0, title_color, _( title_PROFICIENCIES ) );
+    const int height = getmaxy( win ) - 1;
+    const int width = getmaxx( win ) - 1;
+    bool draw_scrollbar = profs.size() > static_cast<size_t>( height );
+    int y = 1;
+    int start = draw_scrollbar ? line : 0;
+    for( size_t i = start; i < profs.size(); ++i ) {
+        if( y > height ) {
+            break;
+        }
+        std::string name;
+        const display_proficiency &cur = profs[i];
+        if( !cur.known && cur.id->can_learn() ) {
+            static_assert( grid_width == 26, "Reminder to update formatting"
+                           "for this string when grid width changes" );
+            name = string_format( "%-22s%2.0f%%", cur.id->name(), cur.practice * 100 );
+        } else {
+            name = cur.id->name();
+        }
+        const nc_color col = focused && i == line ? hilite( cur.color ) : cur.color;
+        y += fold_and_print( win, point( 0, y ), width, col, name );
+    }
+
+    if( draw_scrollbar ) {
+        scrollbar()
+        .offset_x( width )
+        .offset_y( 1 )
+        .content_size( profs.size() )
+        .viewport_pos( line )
+        .viewport_size( height )
+        .scroll_to_last( false )
+        .apply( win );
+    }
+
+    wnoutrefresh( win );
+}
+
+static void draw_proficiencies_info( const catacurses::window &w_info, const unsigned line,
+                                     const Character &guy )
+{
+    werase( w_info );
+    const std::vector<display_proficiency> profs = guy.display_proficiencies();
+    if( line < profs.size() ) {
+        const display_proficiency &cur = profs[line];
+        std::string progress;
+        if( cur.known ) {
+            progress = _( "You know this proficiency." );
+        } else {
+            progress = string_format( _( "You are %2.1f%% of the way towards learning this proficiency." ),
+                                      cur.practice * 100 );
+            if( debug_mode ) {
+                progress += string_format( "\nYou have spent %s practicing this proficiency.",
+                                           to_string( cur.spent ) );
+            }
+        }
+        int y = 0;
+        y += fold_and_print( w_info, point( 1, y ), getmaxx( w_info ) - 1, cur.color, cur.id->name() );
+        y += fold_and_print( w_info, point( 1, y ), getmaxx( w_info ) - 1, c_cyan, progress );
+        fold_and_print( w_info, point( 1, y ), getmaxx( w_info ) - 1, c_white, cur.id->description() );
+    }
+    wnoutrefresh( w_info );
 }
 
 static void draw_stats_tab( const catacurses::window &w_stats,
@@ -827,7 +907,7 @@ static void draw_speed_tab( const catacurses::window &w_speed,
     if( temperature_speed_modifier != 0 ) {
         nc_color pen_color;
         std::string pen_sign;
-        const auto player_local_temp = g->weather.get_temperature( you.pos() );
+        const auto player_local_temp = get_weather().get_temperature( you.pos() );
         if( you.has_trait( trait_id( "COLDBLOOD4" ) ) && player_local_temp > 65 ) {
             pen_color = c_green;
             pen_sign = "+";
@@ -906,6 +986,9 @@ static void draw_info_window( const catacurses::window &w_info, const player &yo
         case player_display_tab::effects:
             draw_effects_info( w_info, line, effect_name_and_text );
             break;
+        case player_display_tab::proficiencies:
+            draw_proficiencies_info( w_info, line, you );
+            break;
         case player_display_tab::num_tabs:
             abort();
     }
@@ -944,13 +1027,11 @@ static void draw_tip( const catacurses::window &w_tip, const player &you,
 }
 
 static bool handle_player_display_action( player &you, unsigned int &line,
-        player_display_tab &curtab, input_context &ctxt,
-        const ui_adaptor &ui_tip, const ui_adaptor &ui_info,
-        const ui_adaptor &ui_stats, const ui_adaptor &ui_encumb,
-        const ui_adaptor &ui_traits, const ui_adaptor &ui_bionics,
-        const ui_adaptor &ui_effects, const ui_adaptor &ui_skills,
-        const std::vector<trait_id> &traitslist,
-        const std::vector<bionic> &bionicslist,
+        player_display_tab &curtab, input_context &ctxt, const ui_adaptor &ui_tip,
+        const ui_adaptor &ui_info, const ui_adaptor &ui_stats, const ui_adaptor &ui_encumb,
+        const ui_adaptor &ui_traits, const ui_adaptor &ui_bionics, const ui_adaptor &ui_effects,
+        const ui_adaptor &ui_skills, const ui_adaptor &ui_proficiencies,
+        const std::vector<trait_id> &traitslist, const std::vector<bionic> &bionicslist,
         const std::vector<std::pair<std::string, std::string>> &effect_name_and_text,
         const std::vector<HeaderSkill> &skillslist )
 {
@@ -973,6 +1054,9 @@ static bool handle_player_display_action( player &you, unsigned int &line,
                 break;
             case player_display_tab::skills:
                 ui_skills.invalidate_ui();
+                break;
+            case player_display_tab::proficiencies:
+                ui_proficiencies.invalidate_ui();
                 break;
             case player_display_tab::num_tabs:
                 abort();
@@ -1002,6 +1086,9 @@ static bool handle_player_display_action( player &you, unsigned int &line,
         case player_display_tab::skills:
             line_beg = 1; // skip first header
             line_end = skillslist.size();
+            break;
+        case player_display_tab::proficiencies:
+            line_end = you.display_proficiencies().size();
             break;
         case player_display_tab::num_tabs:
             abort();
@@ -1182,7 +1269,7 @@ void player::disp_info()
 
     std::vector<HeaderSkill> skillslist;
     skill_displayType_id prev_type = skill_displayType_id::NULL_ID();
-    for( auto &s : player_skill ) {
+    for( const auto &s : player_skill ) {
         if( s->display_category() != prev_type ) {
             prev_type = s->display_category();
             skillslist.emplace_back( s, true );
@@ -1192,7 +1279,6 @@ void player::disp_info()
     const unsigned int skill_win_size_y_max = 1 + skillslist.size();
     const unsigned int info_win_size_y = 6;
 
-    const unsigned int grid_width = 26;
     const unsigned int grid_height = 9;
 
     const unsigned int infooffsetytop = grid_height + 2;
@@ -1247,7 +1333,7 @@ void player::disp_info()
 
     std::map<std::string, int> speed_effects;
     for( auto &elem : *effects ) {
-        for( std::pair<const body_part, effect> &_effect_it : elem.second ) {
+        for( std::pair<const bodypart_str_id, effect> &_effect_it : elem.second ) {
             effect &it = _effect_it.second;
             bool reduced = resists_effect( it );
             int move_adjust = it.get_mod( "SPEED", reduced );
@@ -1368,8 +1454,8 @@ void player::disp_info()
     ui_effects.on_screen_resize( [&]( ui_adaptor & ui_effects ) {
         w_effects = catacurses::newwin( effect_win_size_y, grid_width,
                                         point( grid_width * 2 + 2, infooffsetybottom ) );
-        w_effects_border = catacurses::newwin( effect_win_size_y + 1, grid_width + 1,
-                                               point( grid_width * 2 + 2, infooffsetybottom ) );
+        w_effects_border = catacurses::newwin( effect_win_size_y + 1, grid_width + 2,
+                                               point( grid_width * 2 + 1, infooffsetybottom ) );
         border_effects.set( point( grid_width * 2 + 1, infooffsetybottom - 1 ),
                             point( grid_width + 2, effect_win_size_y + 2 ) );
         ui_effects.position_from_window( w_effects_border );
@@ -1381,23 +1467,29 @@ void player::disp_info()
         draw_effects_tab( w_effects, line, curtab, effect_name_and_text, effect_win_size_y );
     } );
 
-    catacurses::window w_speed;
-    catacurses::window w_speed_border;
-    border_helper::border_info &border_speed = borders.add_border();
-    ui_adaptor ui_speed;
-    ui_speed.on_screen_resize( [&]( ui_adaptor & ui_speed ) {
-        w_speed = catacurses::newwin( grid_height, grid_width, point( grid_width * 2 + 2, 1 ) );
-        w_speed_border = catacurses::newwin( grid_height + 1, grid_width + 1,
-                                             point( grid_width * 2 + 2, 1 ) );
-        border_speed.set( point( grid_width * 2 + 1, 0 ),
-                          point( grid_width + 2, grid_height + 2 ) );
-        ui_speed.position_from_window( w_speed_border );
+    unsigned int proficiency_win_size_y = 0;
+    const point profstart = point( grid_width * 2 + 2, infooffsetybottom + effect_win_size_y + 1 );
+    catacurses::window w_proficiencies;
+    catacurses::window w_proficiencies_border;
+    border_helper::border_info &border_proficiencies = borders.add_border();
+    ui_adaptor ui_proficiencies;
+    ui_proficiencies.on_screen_resize( [&]( ui_adaptor & ui_proficiencies ) {
+        const unsigned int maxy = static_cast<unsigned>( TERMY );
+        proficiency_win_size_y = std::min( display_proficiencies().size(),
+                                           static_cast<size_t>( maxy - ( infooffsetybottom + effect_win_size_y ) ) ) + 1;
+        w_proficiencies = catacurses::newwin( proficiency_win_size_y, grid_width,
+                                              profstart );
+        w_proficiencies_border = catacurses::newwin( proficiency_win_size_y + 1, grid_width + 2,
+                                 profstart + point_west );
+        border_proficiencies.set( profstart + point_north_west, point( grid_width + 2,
+                                  proficiency_win_size_y + 2 ) );
+        ui_proficiencies.position_from_window( w_proficiencies_border );
     } );
-    ui_speed.mark_resize();
-    ui_speed.on_redraw( [&]( const ui_adaptor & ) {
-        borders.draw_border( w_speed_border );
-        wnoutrefresh( w_speed_border );
-        draw_speed_tab( w_speed, *this, speed_effects );
+    ui_proficiencies.mark_resize();
+    ui_proficiencies.on_redraw( [&]( const ui_adaptor & ) {
+        borders.draw_border( w_proficiencies_border );
+        wnoutrefresh( w_proficiencies_border );
+        draw_proficiencies_tab( w_proficiencies, line, *this, curtab );
     } );
 
     unsigned int skill_win_size_y = 0;
@@ -1447,13 +1539,32 @@ void player::disp_info()
                           traitslist, bionicslist, effect_name_and_text, skillslist );
     } );
 
+    catacurses::window w_speed;
+    catacurses::window w_speed_border;
+    border_helper::border_info &border_speed = borders.add_border();
+    ui_adaptor ui_speed;
+    ui_speed.on_screen_resize( [&]( ui_adaptor & ui_speed ) {
+        w_speed = catacurses::newwin( grid_height, grid_width, point( grid_width * 2 + 2, 1 ) );
+        w_speed_border = catacurses::newwin( grid_height + 1, grid_width + 1,
+                                             point( grid_width * 2 + 2, 1 ) );
+        border_speed.set( point( grid_width * 2 + 1, 0 ),
+                          point( grid_width + 2, grid_height + 2 ) );
+        ui_speed.position_from_window( w_speed_border );
+    } );
+    ui_speed.mark_resize();
+    ui_speed.on_redraw( [&]( const ui_adaptor & ) {
+        borders.draw_border( w_speed_border );
+        wnoutrefresh( w_speed_border );
+        draw_speed_tab( w_speed, *this, speed_effects );
+    } );
+
     bool done = false;
 
     do {
         ui_manager::redraw_invalidated();
 
-        done = handle_player_display_action( *this, line, curtab, ctxt, ui_tip, ui_info,
-                                             ui_stats, ui_encumb, ui_traits, ui_bionics, ui_effects, ui_skills,
-                                             traitslist, bionicslist, effect_name_and_text, skillslist );
+        done = handle_player_display_action( *this, line, curtab, ctxt, ui_tip, ui_info, ui_stats,
+                                             ui_encumb, ui_traits, ui_bionics, ui_effects, ui_skills, ui_proficiencies, traitslist, bionicslist,
+                                             effect_name_and_text, skillslist );
     } while( !done );
 }

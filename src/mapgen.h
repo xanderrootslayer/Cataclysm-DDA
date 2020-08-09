@@ -3,12 +3,14 @@
 #define CATA_SRC_MAPGEN_H
 
 #include <cstddef>
+#include <map>
 #include <memory>
 #include <string>
 #include <unordered_map>
 #include <utility>
 #include <vector>
 
+#include "coordinates.h"
 #include "memory_fast.h"
 #include "point.h"
 #include "regional_settings.h"
@@ -369,7 +371,7 @@ class update_mapgen_function_json : public mapgen_function_json_base
         void setup();
         bool setup_update( const JsonObject &jo );
         void check( const std::string &oter_name ) const;
-        bool update_map( const tripoint &omt_pos, const point &offset,
+        bool update_map( const tripoint_abs_omt &omt_pos, const point &offset,
                          mission *miss, bool verify = false ) const;
         bool update_map( mapgendata &md, const point &offset = point_zero,
                          bool verify = false ) const;

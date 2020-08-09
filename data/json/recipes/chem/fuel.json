@@ -48,6 +48,7 @@
     "type": "recipe",
     "category": "CC_CHEM",
     "subcategory": "CSC_CHEM_FUEL",
+    "byproducts": [ [ "chem_glycerol", 4 ] ],
     "skill_used": "chemistry",
     "difficulty": 5,
     "result_mult": 4,
@@ -66,7 +67,6 @@
         [ "edible_tallow_lard", 8, "LIST" ],
         [ "tallow_tainted", 8 ],
         [ "any_fat", 16, "LIST" ],
-        [ "fat_tainted", 16 ],
         [ "lamp_oil", 1000 ],
         [ "motor_oil", 1000 ]
       ]
@@ -93,7 +93,7 @@
         [ "cooking_oil", 16 ],
         [ "cooking_oil2", 16 ],
         [ "any_fat", 6, "LIST" ],
-        [ "fat_tainted", 6 ]
+        [ "ghee", 16 ]
       ]
     ],
     "//": "Making lamp oil from (tainted) fat directly is less efficient than using lard/tallow, but allows processing of spoilt fats. See #29770",

@@ -1,3 +1,5 @@
+#include "catch/catch.hpp"
+
 #include <cstddef>
 #include <list>
 #include <map>
@@ -9,7 +11,6 @@
 #include <vector>
 
 #include "avatar.h"
-#include "catch/catch.hpp"
 #include "inventory.h"
 #include "item.h"
 #include "item_location.h"
@@ -227,8 +228,8 @@ static invlet_state check_invlet( player &p, item &it, const char invlet )
     if( it.invlet == '\0' ) {
         return NONE;
     } else if( it.invlet == invlet ) {
-        if( p.inv.assigned_invlet.find( invlet ) != p.inv.assigned_invlet.end() &&
-            p.inv.assigned_invlet[invlet] == it.typeId() ) {
+        if( p.inv->assigned_invlet.find( invlet ) != p.inv->assigned_invlet.end() &&
+            p.inv->assigned_invlet[invlet] == it.typeId() ) {
             return ASSIGNED;
         } else {
             return CACHED;
@@ -459,7 +460,7 @@ static void invlet_test( player &dummy, const inventory_location from, const inv
         invlet_state expected_second_invlet_state = second_invlet_state;
 
         // remove all items
-        dummy.inv.clear();
+        dummy.inv->clear();
         dummy.worn.clear();
         dummy.remove_weapon();
         get_map().i_clear( dummy.pos() );
@@ -541,7 +542,7 @@ static void stack_invlet_test( player &dummy, inventory_location from, inventory
     }
 
     // remove all items
-    dummy.inv.clear();
+    dummy.inv->clear();
     dummy.worn.clear();
     dummy.remove_weapon();
     get_map().i_clear( dummy.pos() );
@@ -593,7 +594,7 @@ static void swap_invlet_test( player &dummy, inventory_location loc )
     REQUIRE( loc != GROUND );
 
     // remove all items
-    dummy.inv.clear();
+    dummy.inv->clear();
     dummy.worn.clear();
     dummy.remove_weapon();
     get_map().i_clear( dummy.pos() );
@@ -677,7 +678,7 @@ static void merge_invlet_test( player &dummy, inventory_location from )
                                       invlet_2 : 0;
 
         // remove all items
-        dummy.inv.clear();
+        dummy.inv->clear();
         dummy.worn.clear();
         dummy.remove_weapon();
         get_map().i_clear( dummy.pos() );

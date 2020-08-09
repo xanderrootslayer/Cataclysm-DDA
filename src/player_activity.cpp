@@ -7,6 +7,7 @@
 #include "activity_type.h"
 #include "avatar.h"
 #include "calendar.h"
+#include "character.h"
 #include "construction.h"
 #include "item.h"
 #include "itype.h"
@@ -20,6 +21,7 @@
 #include "string_id.h"
 #include "translations.h"
 #include "units.h"
+#include "units_fwd.h"
 #include "value_ptr.h"
 
 static const activity_id ACT_ATM( "ACT_ATM" );
@@ -390,7 +392,7 @@ void player_activity::allow_distractions()
 
 void player_activity::inherit_distractions( const player_activity &other )
 {
-    for( auto &type : other.ignored_distractions ) {
+    for( const distraction_type &type : other.ignored_distractions ) {
         ignore_distraction( type );
     }
 }

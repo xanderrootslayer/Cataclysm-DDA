@@ -2,10 +2,12 @@
 
 #include <algorithm>
 #include <climits>
+#include <cmath>
 #include <cstdlib>
 #include <limits>
 #include <list>
 
+#include "character.h"
 #include "crafting.h"
 #include "debug.h"
 #include "enum_conversions.h"
@@ -14,7 +16,6 @@
 #include "item.h"
 #include "json.h"
 #include "output.h"
-#include "player.h"
 #include "recipe.h"
 #include "requirements.h"
 #include "translations.h"
@@ -127,6 +128,9 @@ void craft_command::execute( const tripoint &new_loc )
                                   "Start crafting anyway?" ), rec->result_name() ) ) {
                     return;
                 }
+            } else if( !rec->character_has_required_proficiencies( *crafter ) ) {
+                popup( _( "You don't have the required proficiencies to craft this!" ) );
+                return;
             } else {
                 debugmsg( "Tried to start craft without sufficient charges" );
                 return;

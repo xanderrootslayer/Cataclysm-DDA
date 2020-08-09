@@ -1,5 +1,7 @@
 #include <algorithm>
 #include <cassert>
+#include <cstddef>
+#include <iterator>
 #include <list>
 #include <memory>
 #include <string>
@@ -9,16 +11,17 @@
 #include "advanced_inv_pagination.h"
 #include "advanced_inv_pane.h"
 #include "avatar.h"
-#include "inventory.h"
 #include "item.h"
 #include "item_contents.h"
 #include "item_search.h"
 #include "map.h"
 #include "options.h"
-#include "player.h"
 #include "uistate.h"
 #include "units.h"
+#include "units_fwd.h"
 #include "vehicle.h"
+
+class item_category;
 
 #if defined(__ANDROID__)
 #   include <SDL_keyboard.h>
@@ -38,7 +41,7 @@ void advanced_inventory_pane::load_settings( int saved_area_idx,
     const int i_location = ( get_option<bool>( "OPEN_DEFAULT_ADV_INV" ) ) ? saved_area_idx :
                            save_state->area_idx;
     const aim_location location = static_cast<aim_location>( i_location );
-    auto square = squares[location];
+    const advanced_inv_area square = squares[location];
     // determine the square's vehicle/map item presence
     bool has_veh_items = square.can_store_in_vehicle() ?
                          !square.veh->get_items( square.vstor ).empty() : false;
@@ -129,8 +132,6 @@ void advanced_inventory_pane::add_items_from_area( advanced_inv_area &square,
         bool vehicle_override )
 {
     assert( square.id != AIM_ALL );
-    square.volume = 0_ml;
-    square.weight = 0_gram;
     if( !square.canputitems() ) {
         return;
     }
@@ -139,8 +140,12 @@ void advanced_inventory_pane::add_items_from_area( advanced_inv_area &square,
     // Existing items are *not* cleared on purpose, this might be called
     // several times in case all surrounding squares are to be shown.
     if( square.id == AIM_INVENTORY ) {
+        square.volume = 0_ml;
+        square.weight = 0_gram;
         items = u.get_AIM_inventory( *this, square );
     } else if( square.id == AIM_WORN ) {
+        square.volume = 0_ml;
+        square.weight = 0_gram;
         auto iter = u.worn.begin();
         for( size_t i = 0; i < u.worn.size(); ++i, ++iter ) {
             advanced_inv_listitem it( &*iter, i, 1, square.id, false );
@@ -152,6 +157,8 @@ void advanced_inventory_pane::add_items_from_area( advanced_inv_area &square,
             items.push_back( it );
         }
     } else if( square.id == AIM_CONTAINER ) {
+        square.volume = 0_ml;
+        square.weight = 0_gram;
         item *cont = square.get_container( in_vehicle() );
         if( cont != nullptr ) {
             if( !cont->is_container_empty() ) {
@@ -166,6 +173,13 @@ void advanced_inventory_pane::add_items_from_area( advanced_inv_area &square,
         }
     } else {
         bool is_in_vehicle = square.can_store_in_vehicle() && ( in_vehicle() || vehicle_override );
+        if( is_in_vehicle ) {
+            square.volume_veh = 0_ml;
+            square.weight_veh = 0_gram;
+        } else {
+            square.volume = 0_ml;
+            square.weight = 0_gram;
+        }
         const advanced_inv_area::itemstack &stacks = is_in_vehicle ?
                 square.i_stacked( square.veh->get_items( square.vstor ) ) :
                 square.i_stacked( m.i_at( square.pos ) );
@@ -175,8 +189,13 @@ void advanced_inventory_pane::add_items_from_area( advanced_inv_area &square,
             if( is_filtered( *it.items.front() ) ) {
                 continue;
             }
-            square.volume += it.volume;
-            square.weight += it.weight;
+            if( is_in_vehicle ) {
+                square.volume_veh += it.volume;
+                square.weight_veh += it.weight;
+            } else {
+                square.volume += it.volume;
+                square.weight += it.weight;
+            }
             items.push_back( it );
         }
     }
@@ -286,7 +305,7 @@ void advanced_inventory_pane::scroll_category( int offset )
     }
     // index must already be valid!
     assert( get_cur_item_ptr() != nullptr );
-    auto cur_cat = items[index].cat;
+    const item_category *cur_cat = items[index].cat;
     if( offset > 0 ) {
         while( items[index].cat == cur_cat ) {
             index++;

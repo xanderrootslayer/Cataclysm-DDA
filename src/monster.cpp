@@ -6,9 +6,12 @@
 #include <tuple>
 #include <unordered_map>
 
+#include "bodypart.h"
+#include "catacharset.h"
 #include "character.h"
 #include "compatibility.h"
 #include "coordinate_conversions.h"
+#include "coordinates.h"
 #include "cursesdef.h"
 #include "debug.h"
 #include "effect.h"
@@ -44,6 +47,7 @@
 #include "output.h"
 #include "overmapbuffer.h"
 #include "pimpl.h"
+#include "player.h"
 #include "projectile.h"
 #include "rng.h"
 #include "sounds.h"
@@ -52,6 +56,8 @@
 #include "text_snippets.h"
 #include "translations.h"
 #include "trap.h"
+#include "units.h"
+#include "viewer.h"
 #include "weather.h"
 
 static const efftype_id effect_badpoison( "badpoison" );
@@ -224,8 +230,8 @@ monster::monster( const mtype_id &id ) : monster()
     moves = type->speed;
     Creature::set_speed_base( type->speed );
     hp = type->hp;
-    for( auto &sa : type->special_attacks ) {
-        auto &entry = special_attacks[sa.first];
+    for( const auto &sa : type->special_attacks ) {
+        mon_special_attack &entry = special_attacks[sa.first];
         entry.cooldown = rng( 0, sa.second->cooldown );
     }
     anger = type->agro;
@@ -292,8 +298,8 @@ void monster::poly( const mtype_id &id )
     morale = type->morale;
     hp = static_cast<int>( hp_percentage * type->hp );
     special_attacks.clear();
-    for( auto &sa : type->special_attacks ) {
-        auto &entry = special_attacks[sa.first];
+    for( const auto &sa : type->special_attacks ) {
+        mon_special_attack &entry = special_attacks[sa.first];
         entry.cooldown = sa.second->cooldown;
     }
     faction = type->default_faction;
@@ -429,7 +435,7 @@ void monster::try_reproduce()
 
     // only 50% of animals should reproduce
     bool female = one_in( 2 );
-    for( auto &elem : type->baby_flags ) {
+    for( const std::string &elem : type->baby_flags ) {
         if( elem == "SUMMER" || elem == "WINTER" || elem == "SPRING" || elem == "AUTUMN" ) {
             season_spawn = true;
         }
@@ -445,7 +451,7 @@ void monster::try_reproduce()
 
         if( season_spawn ) {
             season_match = false;
-            for( auto &elem : type->baby_flags ) {
+            for( const std::string &elem : type->baby_flags ) {
                 if( ( season_of_year( *baby_timer ) == SUMMER && elem == "SUMMER" ) ||
                     ( season_of_year( *baby_timer ) == WINTER && elem == "WINTER" ) ||
                     ( season_of_year( *baby_timer ) == SPRING && elem == "SPRING" ) ||
@@ -785,8 +791,7 @@ std::string monster::extended_description() const
     describe_flags( _( "<bad>In fight it can %s.</bad>" ), {
         {m_flag::MF_GRABS, pgettext( "Grab as an action", "grab" )},
         {m_flag::MF_VENOM, pgettext( "Poison as an action", "poison" )},
-        {m_flag::MF_PARALYZE, pgettext( "Paralyze as an action", "paralyze" )},
-        {m_flag::MF_BLEED, _( "cause bleed" )}
+        {m_flag::MF_PARALYZE, pgettext( "Paralyze as an action", "paralyze" )}
     } );
 
     if( !type->has_flag( m_flag::MF_NOHEAD ) ) {
@@ -1489,7 +1494,7 @@ void monster::melee_attack( Creature &target, float accuracy )
     // Add any on damage effects
     for( const auto &eff : type->atk_effs ) {
         if( x_in_y( eff.chance, 100 ) ) {
-            const body_part affected_bp = eff.affect_hit_bp ? dealt_dam.bp_hit->token : eff.bp;
+            const bodypart_id affected_bp = eff.affect_hit_bp ? dealt_dam.bp_hit : convert_bp( eff.bp ).id();
             target.add_effect( eff.id, time_duration::from_turns( eff.duration ), affected_bp, eff.permanent );
         }
     }
@@ -1510,16 +1515,6 @@ void monster::melee_attack( Creature &target, float accuracy )
     if( stab_cut > 0 && has_flag( MF_PARALYZE ) ) {
         target.add_msg_if_player( m_bad, _( "You feel venom enter your body!" ) );
         target.add_effect( effect_paralyzepoison, 10_minutes );
-    }
-
-    if( total_dealt > 6 && stab_cut > 0 && has_flag( MF_BLEED ) ) {
-        // Maybe should only be if DT_CUT > 6... Balance question
-        if( target.is_player() || target.is_npc() ) {
-            target.as_character()->make_bleed( dealt_dam.bp_hit, 6_minutes );
-        } else {
-            target.add_effect( effect_bleed, 6_minutes, dealt_dam.bp_hit->token );
-        }
-
     }
 }
 
@@ -1657,7 +1652,7 @@ bool monster::move_effects( bool )
     }
 
     map &here = get_map();
-    bool u_see_me = get_player_character().sees( *this );
+    bool u_see_me = get_player_view().sees( *this );
     if( has_effect( effect_tied ) ) {
         // friendly pet, will stay tied down and obey.
         if( friendly == -1 ) {
@@ -1794,13 +1789,6 @@ bool monster::move_effects( bool )
     return true;
 }
 
-void monster::add_effect( const efftype_id &eff_id, const time_duration &dur, body_part/*bp*/,
-                          bool permanent, int intensity, bool force, bool deferred )
-{
-    // Effects are not applied to specific monster body part
-    Creature::add_effect( eff_id, dur, num_bp, permanent, intensity, force, deferred );
-}
-
 std::string monster::get_effect_status() const
 {
     std::vector<std::string> effect_status;
@@ -1922,6 +1910,9 @@ float monster::stability_roll() const
             break;
         case creature_size::medium:
             break; // keep default
+        case creature_size::num_sizes:
+            debugmsg( "ERROR: Invalid Creature size class." );
+            break;
     }
 
     int stability = dice( type->melee_sides, type->melee_dice ) + size_bonus;
@@ -1982,6 +1973,9 @@ float monster::fall_damage_mod() const
             return 1.4f;
         case creature_size::huge:
             return 2.0f;
+        case creature_size::num_sizes:
+            debugmsg( "ERROR: Invalid Creature size class." );
+            return 0.0f;
     }
 
     return 0.0f;
@@ -2114,7 +2108,7 @@ void monster::process_turn()
     }
     // Persist grabs as long as there's an adjacent target.
     if( has_effect( effect_grabbing ) ) {
-        for( auto &dest : here.points_in_radius( pos(), 1, 0 ) ) {
+        for( const tripoint &dest : here.points_in_radius( pos(), 1, 0 ) ) {
             const player *const p = g->critter_at<player>( dest );
             if( p && p->has_effect( effect_grabbed ) ) {
                 add_effect( effect_grabbing, 2_turns );
@@ -2128,9 +2122,7 @@ void monster::process_turn()
                 sounds::sound( pos(), 5, sounds::sound_t::combat, _( "hummmmm." ), false, "humming", "electric" );
             }
         } else {
-            Character &player_character = get_player_character();
             for( const tripoint &zap : here.points_in_radius( pos(), 1 ) ) {
-                const bool player_sees = player_character.sees( zap );
                 const map_stack items = here.i_at( zap );
                 for( const auto &item : items ) {
                     if( item.made_of( phase_id::LIQUID ) && item.flammable() ) { // start a fire!
@@ -2146,14 +2138,11 @@ void monster::process_turn()
                 if( t == ter_str_id( "t_gas_pump" ) || t == ter_str_id( "t_gas_pump_a" ) ) {
                     if( one_in( 4 ) ) {
                         explosion_handler::explosion( pos(), 40, 0.8, true );
-                        if( player_sees ) {
-                            add_msg( m_warning, _( "The %s explodes in a fiery inferno!" ), here.tername( zap ) );
-                        }
+                        add_msg_if_player_sees( zap, m_warning, _( "The %s explodes in a fiery inferno!" ),
+                                                here.tername( zap ) );
                     } else {
-                        if( player_sees ) {
-                            add_msg( m_warning, _( "Lightning from %1$s engulfs the %2$s!" ), name(),
-                                     here.tername( zap ) );
-                        }
+                        add_msg_if_player_sees( zap, m_warning, _( "Lightning from %1$s engulfs the %2$s!" ),
+                                                name(), here.tername( zap ) );
                         here.add_field( zap, fd_fire, 1, 2_turns );
                     }
                 }
@@ -2165,6 +2154,7 @@ void monster::process_turn()
                                "thunder_near" );
                 sounds::sound( pos(), 20, sounds::sound_t::combat, _( "vrrrRRRUUMMMMMMMM!" ), false, "explosion",
                                "default" );
+                Character &player_character = get_player_character();
                 if( player_character.sees( pos() ) ) {
                     add_msg( m_bad, _( "Lightning strikes the %s!" ), name() );
                     add_msg( m_bad, _( "Your vision goes white!" ) );
@@ -2209,7 +2199,7 @@ void monster::die( Creature *nkiller )
             // has guilt flag or player is pacifist && monster is humanoid
             mdeath::guilt( *this );
         }
-        g->events().send<event_type::character_kills_monster>( ch->getID(), type->id );
+        get_event_bus().send<event_type::character_kills_monster>( ch->getID(), type->id );
         if( ch->is_player() && ch->has_trait( trait_KILLER ) ) {
             if( one_in( 4 ) ) {
                 const translation snip = SNIPPET.random_from_category( "killer_on_kill" ).value_or( translation() );
@@ -2239,13 +2229,13 @@ void monster::die( Creature *nkiller )
     map &here = get_map();
     if( has_effect( effect_grabbing ) ) {
         remove_effect( effect_grabbing );
-        for( auto &player_pos : here.points_in_radius( pos(), 1, 0 ) ) {
+        for( const tripoint &player_pos : here.points_in_radius( pos(), 1, 0 ) ) {
             player *p = g->critter_at<player>( player_pos );
             if( !p || !p->has_effect( effect_grabbed ) ) {
                 continue;
             }
             bool grabbed = false;
-            for( auto &mon_pos : here.points_in_radius( player_pos, 1, 0 ) ) {
+            for( const tripoint &mon_pos : here.points_in_radius( player_pos, 1, 0 ) ) {
                 const monster *const mon = g->critter_at<monster>( mon_pos );
                 if( mon && mon->has_effect( effect_grabbing ) ) {
                     grabbed = true;
@@ -2272,7 +2262,8 @@ void monster::die( Creature *nkiller )
         const tripoint abssub = ms_to_sm_copy( here.getabs( pos() ) );
         // Do it for overmap above/below too
         for( const tripoint &p : points_in_radius( abssub, HALF_MAPSIZE, 1 ) ) {
-            for( auto &mgp : overmap_buffer.groups_at( p ) ) {
+            // TODO: fix point types
+            for( auto &mgp : overmap_buffer.groups_at( tripoint_abs_sm( p ) ) ) {
                 if( MonsterGroupManager::IsMonsterInGroup( mgp->type, type->id ) ) {
                     mgp->dying = true;
                 }
@@ -2439,6 +2430,12 @@ void monster::process_one_effect( effect &it, bool is_new )
         effect_cache[FLEEING] = true;
     } else if( id == effect_no_sight || id == effect_blind ) {
         effect_cache[VISION_IMPAIRED] = true;
+    } else if( id == effect_bleed && x_in_y( it.get_intensity(), it.get_max_intensity() ) ) {
+        // monsters are simplified so they just take damage from bleeding
+        apply_damage( nullptr, bodypart_id( "torso" ), 1 );
+        // this is for balance only
+        it.mod_duration( -rng( 1_turns, it.get_int_dur_factor() / 2 ) );
+        bleed();
     }
 }
 
@@ -2460,7 +2457,7 @@ void monster::process_effects()
     Character &player_character = get_player_character();
     //If this monster has the ability to heal in combat, do it now.
     const int healed_amount = heal( type->regenerates );
-    if( healed_amount > 0 && one_in( 2 ) && player_character.sees( *this ) ) {
+    if( healed_amount > 0 && one_in( 2 ) ) {
         std::string healing_format_string;
         if( healed_amount >= 50 ) {
             healing_format_string = _( "The %s is visibly regenerating!" );
@@ -2469,15 +2466,14 @@ void monster::process_effects()
         } else {
             healing_format_string = _( "The %s is healing slowly." );
         }
-        add_msg( m_warning, healing_format_string, name() );
+        add_msg_if_player_sees( *this, m_warning, healing_format_string, name() );
     }
 
     if( type->regenerates_in_dark ) {
         const float light = get_map().ambient_light_at( pos() );
         // Magic number 10000 was chosen so that a floodlight prevents regeneration in a range of 20 tiles
-        if( heal( static_cast<int>( 50.0 *  std::exp( - light * light / 10000 ) )  > 0 && one_in( 2 ) &&
-                  player_character.sees( *this ) ) ) {
-            add_msg( m_warning, _( "The %s uses the darkness to regenerate." ), name() );
+        if( heal( static_cast<int>( 50.0 *  std::exp( - light * light / 10000 ) )  > 0 && one_in( 2 ) ) ) {
+            add_msg_if_player_sees( *this, m_warning, _( "The %s uses the darkness to regenerate." ), name() );
         }
     }
 
@@ -2504,9 +2500,7 @@ void monster::process_effects()
 
     // If this critter dies in sunlight, check & assess damage.
     if( has_flag( MF_SUNDEATH ) && g->is_in_sunlight( pos() ) ) {
-        if( player_character.sees( *this ) ) {
-            add_msg( m_good, _( "The %s burns horribly in the sunlight!" ), name() );
-        }
+        add_msg_if_player_sees( *this, m_good, _( "The %s burns horribly in the sunlight!" ), name() );
         apply_damage( nullptr, bodypart_id( "torso" ), 100 );
         if( hp < 0 ) {
             hp = 0;
@@ -2600,10 +2594,8 @@ bool monster::make_fungus()
             return false;
     }
 
-    if( get_player_character().sees( pos() ) ) {
-        add_msg( m_info, _( "The spores transform %1$s into a %2$s!" ),
-                 old_name, name() );
-    }
+    add_msg_if_player_sees( pos(), m_info, _( "The spores transform %1$s into a %2$s!" ),
+                            old_name, name() );
 
     return true;
 }
@@ -2667,32 +2659,24 @@ units::volume monster::get_volume() const
 
 void monster::add_msg_if_npc( const std::string &msg ) const
 {
-    if( get_player_character().sees( *this ) ) {
-        add_msg( replace_with_npc_name( msg ) );
-    }
+    add_msg_if_player_sees( *this, replace_with_npc_name( msg ) );
 }
 
 void monster::add_msg_player_or_npc( const std::string &/*player_msg*/,
                                      const std::string &npc_msg ) const
 {
-    if( get_player_character().sees( *this ) ) {
-        add_msg( replace_with_npc_name( npc_msg ) );
-    }
+    add_msg_if_player_sees( *this, replace_with_npc_name( npc_msg ) );
 }
 
 void monster::add_msg_if_npc( const game_message_params &params, const std::string &msg ) const
 {
-    if( get_player_character().sees( *this ) ) {
-        add_msg( params, replace_with_npc_name( msg ) );
-    }
+    add_msg_if_player_sees( *this, params, replace_with_npc_name( msg ) );
 }
 
 void monster::add_msg_player_or_npc( const game_message_params &params,
                                      const std::string &/*player_msg*/, const std::string &npc_msg ) const
 {
-    if( get_player_character().sees( *this ) ) {
-        add_msg( params, replace_with_npc_name( npc_msg ) );
-    }
+    add_msg_if_player_sees( *this, params, replace_with_npc_name( npc_msg ) );
 }
 
 units::mass monster::get_carried_weight()
@@ -2779,8 +2763,8 @@ item monster::to_item() const
 
 float monster::power_rating() const
 {
-    float ret = get_size() - 2; // Zed gets 1, cat -1, hulk 3
-    ret += has_flag( MF_ELECTRONIC ) ? 2 : 0; // Robots tend to have guns
+    float ret = get_size() - 2.0f; // Zed gets 1, cat -1, hulk 3
+    ret += has_flag( MF_ELECTRONIC ) ? 2.0f : 0.0f; // Robots tend to have guns
     // Hostile stuff gets a big boost
     // Neutral moose will still get burned if it comes close
     return ret;

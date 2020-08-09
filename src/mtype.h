@@ -19,6 +19,7 @@
 #include "translations.h"
 #include "type_id.h"
 #include "units.h"
+#include "units_fwd.h"
 
 class Creature;
 class monster;
@@ -81,7 +82,6 @@ enum m_flag : int {
     MF_VENOM,               // Attack may poison the player
     MF_BADVENOM,            // Attack may SEVERELY poison the player
     MF_PARALYZE,            // Attack may paralyze the player with venom
-    MF_BLEED,               // Causes player to bleed
     MF_WEBWALK,             // Doesn't destroy webs
     MF_DIGS,                // Digs through the ground
     MF_CAN_DIG,             // Can dig and walk
@@ -263,7 +263,7 @@ struct mtype {
         bool regen_morale = false;
 
         // mountable ratio for rider weight vs. mount weight, default 0.2
-        float mountable_weight_ratio = 0.2;
+        float mountable_weight_ratio = 0.2f;
 
         int attack_cost = 100;  /** moves per regular attack */
         int melee_skill = 0;    /** melee hit skill, 20 is superhuman hitting abilities */

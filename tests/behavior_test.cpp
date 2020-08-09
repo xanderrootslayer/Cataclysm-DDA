@@ -1,15 +1,17 @@
+#include "catch/catch.hpp"
+
 #include <memory>
 #include <string>
 
 #include "behavior.h"
 #include "behavior_oracle.h"
 #include "behavior_strategy.h"
-#include "catch/catch.hpp"
 #include "character_oracle.h"
 #include "item.h"
 #include "item_location.h"
 #include "map.h"
 #include "map_iterator.h"
+#include "monster.h"
 #include "monster_oracle.h"
 #include "mtype.h"
 #include "npc.h"

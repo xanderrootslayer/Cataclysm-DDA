@@ -1,6 +1,3 @@
-#include "mattack_common.h" // IWYU pragma: associated
-#include "monstergenerator.h" // IWYU pragma: associated
-
 #include <algorithm>
 #include <cstdlib>
 #include <set>
@@ -20,11 +17,13 @@
 #include "item_group.h"
 #include "json.h"
 #include "mattack_actors.h"
+#include "mattack_common.h" // IWYU pragma: associated
 #include "monattack.h"
 #include "mondeath.h"
 #include "mondefense.h"
 #include "monfaction.h"
 #include "mongroup.h"
+#include "monstergenerator.h" // IWYU pragma: associated
 #include "optional.h"
 #include "options.h"
 #include "pathfinding.h"
@@ -32,6 +31,12 @@
 #include "string_id.h"
 #include "translations.h"
 #include "units.h"
+#include "units_fwd.h"
+
+namespace behavior
+{
+class node_t;
+}  // namespace behavior
 
 namespace io
 {
@@ -84,7 +89,6 @@ std::string enum_to_string<m_flag>( m_flag data )
         case MF_VENOM: return "VENOM";
         case MF_BADVENOM: return "BADVENOM";
         case MF_PARALYZE: return "PARALYZEVENOM";
-        case MF_BLEED: return "BLEED";
         case MF_WEBWALK: return "WEBWALK";
         case MF_DIGS: return "DIGS";
         case MF_CAN_DIG: return "CAN_DIG";
@@ -216,7 +220,7 @@ bool string_id<species_type>::is_valid() const
 }
 
 MonsterGenerator::MonsterGenerator()
-    : mon_templates( "monster type", "id", "alias" )
+    : mon_templates( "monster type" )
     , mon_species( "species" )
 {
     mon_templates->insert( mtype() );
@@ -1169,7 +1173,7 @@ void MonsterGenerator::check_monster_definitions() const
         if( mon.has_flag( MF_MILKABLE ) && mon.starting_ammo.size() > 1 ) {
             debugmsg( "monster % is flagged milkable, but has multiple starting_ammo defined", mon.id.c_str() );
         }
-        for( auto &spec : mon.species ) {
+        for( const species_id &spec : mon.species ) {
             if( !spec.is_valid() ) {
                 debugmsg( "monster %s has invalid species %s", mon.id.c_str(), spec.c_str() );
             }
@@ -1178,7 +1182,7 @@ void MonsterGenerator::check_monster_definitions() const
             debugmsg( "monster %s has unknown death drop item group: %s", mon.id.c_str(),
                       mon.death_drops.c_str() );
         }
-        for( auto &m : mon.mat ) {
+        for( const material_id &m : mon.mat ) {
             if( m.str() == "null" || !m.is_valid() ) {
                 debugmsg( "monster %s has unknown material: %s", mon.id.c_str(), m.c_str() );
             }
@@ -1209,12 +1213,12 @@ void MonsterGenerator::check_monster_definitions() const
                 debugmsg( "monster %s has unknown scents_ignored %s", mon.id.c_str(), s_id.c_str() );
             }
         }
-        for( auto &s : mon.starting_ammo ) {
+        for( const auto &s : mon.starting_ammo ) {
             if( !item::type_is_defined( s.first ) ) {
                 debugmsg( "starting ammo %s of monster %s is unknown", s.first.c_str(), mon.id.c_str() );
             }
         }
-        for( auto &e : mon.atk_effs ) {
+        for( const mon_effect_data &e : mon.atk_effs ) {
             if( !e.id.is_valid() ) {
                 debugmsg( "attack effect %s of monster %s is unknown", e.id.c_str(), mon.id.c_str() );
             }

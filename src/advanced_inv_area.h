@@ -2,13 +2,14 @@
 #ifndef CATA_SRC_ADVANCED_INV_AREA_H
 #define CATA_SRC_ADVANCED_INV_AREA_H
 
-#include "point.h"
-#include "units.h"
-
 #include <array>
 #include <list>
 #include <string>
 #include <vector>
+
+#include "point.h"
+#include "units.h"
+#include "units_fwd.h"
 
 enum aim_location : char {
     AIM_INVENTORY = 0,
@@ -68,7 +69,9 @@ class advanced_inv_area
         std::string flags;
         // total volume and weight of items currently there
         units::volume volume;
+        units::volume volume_veh;
         units::mass weight;
+        units::mass weight_veh;
         // maximal count / volume of items there.
         int max_size = 0;
         // appears as part of the legend at the top right

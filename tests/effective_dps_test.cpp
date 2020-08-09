@@ -1,3 +1,5 @@
+#include "catch/catch.hpp"
+
 #include <cstdlib>
 #include <utility>
 
@@ -6,10 +8,10 @@
 #include "creature.h"
 #include "item.h"
 #include "melee.h"
+#include "monster.h"
 #include "player.h"
 #include "type_id.h"
 
-#include "catch/catch.hpp"
 #include "player_helpers.h"
 
 // Run a large number of trials of a player attacking a monster with a given weapon,
