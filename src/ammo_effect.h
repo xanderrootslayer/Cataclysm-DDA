@@ -7,10 +7,10 @@
 #include <vector>
 
 #include "explosion.h"
+#include "field_type.h"
 #include "string_id.h"
 #include "type_id.h"
 
-extern field_type_id fd_null;
 class JsonObject;
 
 struct ammo_effect {
@@ -36,6 +36,7 @@ struct ammo_effect {
         int aoe_check_sees_radius = 0;
         bool do_flashbang = false;
         bool do_emp_blast = false;
+        bool foamcrete_build = false;
 
         field_type_id trail_field_type = fd_null;
         /** used during JSON loading only */

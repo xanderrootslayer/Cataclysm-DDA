@@ -371,7 +371,7 @@ void start_location::burn( const tripoint_abs_omt &omtstart, const size_t count,
     }
     std::shuffle( valid.begin(), valid.end(), rng_get_engine() );
     for( size_t i = 0; i < std::min( count, valid.size() ); i++ ) {
-        m.add_field( valid[i], fd_fire, 3 );
+        m.add_field( valid[i], field_type_id( "fd_fire" ), 3 );
     }
     m.save();
 }
@@ -391,7 +391,7 @@ void start_location::add_map_extra( const tripoint_abs_omt &omtstart,
 
 void start_location::handle_heli_crash( player &u ) const
 {
-    for( const bodypart_id &bp : u.get_all_body_parts() ) {
+    for( const bodypart_id &bp : u.get_all_body_parts( get_body_part_flags::only_main ) ) {
         if( bp == bodypart_id( "head" ) || bp == bodypart_id( "torso" ) ) {
             continue;// Skip head + torso for balance reasons.
         }

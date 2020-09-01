@@ -1,5 +1,4 @@
 #include "catch/catch.hpp"
-
 #include "player_helpers.h"
 
 #include <cstddef>
@@ -15,15 +14,16 @@
 #include "game.h"
 #include "inventory.h"
 #include "item.h"
+#include "item_pocket.h"
 #include "itype.h"
 #include "map.h"
-#include "material.h"
 #include "npc.h"
 #include "pimpl.h"
 #include "player.h"
 #include "player_activity.h"
 #include "point.h"
-#include "string_id.h"
+#include "ret_val.h"
+#include "stomach.h"
 #include "type_id.h"
 
 int get_remaining_charges( const std::string &tool_id )
@@ -74,6 +74,10 @@ void clear_character( player &dummy, bool debug_storage )
     item food( "debug_nutrition" );
     dummy.consume( food );
 
+    // This sets HP to max, clears addictions and morale,
+    // and sets hunger, thirst, fatigue and such to zero
+    dummy.environmental_revert_effect();
+
     dummy.empty_skills();
     dummy.martial_arts_data->clear_styles();
     dummy.clear_morale();
@@ -102,10 +106,6 @@ void clear_character( player &dummy, bool debug_storage )
     dummy.set_dex_bonus( 0 );
     dummy.set_int_bonus( 0 );
     dummy.set_per_bonus( 0 );
-    dummy.reset_bonuses();
-    dummy.set_speed_base( 100 );
-    dummy.set_speed_bonus( 0 );
-    dummy.set_all_parts_hp_to_max();
 
     dummy.cash = 0;
 

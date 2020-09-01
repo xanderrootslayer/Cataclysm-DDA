@@ -184,6 +184,13 @@
   },
   {
     "type": "COMESTIBLE",
+    "id": "egg_quetzalcoatlus",
+    "name": "quetzalcoatlus egg",
+    "copy-from": "egg_dino",
+    "rot_spawn": "GROUP_EGG_quetzalcoatlus"
+  },
+  {
+    "type": "COMESTIBLE",
     "id": "egg_dilophosaurus",
     "name": "dilophosaurus egg",
     "copy-from": "egg_dino",
@@ -195,5 +202,12 @@
     "name": "ceratosaurus egg",
     "copy-from": "egg_dino",
     "rot_spawn": "GROUP_EGG_ceratosaurus"
+  },
+  {
+    "type": "COMESTIBLE",
+    "id": "egg_mosasaurus",
+    "name": "mosasaurus egg",
+    "copy-from": "egg_dino",
+    "rot_spawn": "GROUP_EGG_mosasaurus"
   }
 ]

@@ -1,4 +1,5 @@
 #include "catch/catch.hpp"
+#include "npc.h"
 
 #include <memory>
 #include <set>
@@ -8,6 +9,7 @@
 #include <vector>
 
 #include "calendar.h"
+#include "character.h"
 #include "common_types.h"
 #include "faction.h"
 #include "field.h"
@@ -17,7 +19,6 @@
 #include "map.h"
 #include "map_helpers.h"
 #include "memory_fast.h"
-#include "npc.h"
 #include "npc_class.h"
 #include "optional.h"
 #include "overmapbuffer.h"
@@ -306,7 +307,7 @@ TEST_CASE( "npc-movement" )
     const ter_id t_floor( "t_floor" );
     const furn_id f_rubble( "f_rubble" );
     const furn_id f_null( "f_null" );
-    const vpart_id vpart_frame_vertical( "frame_vertical" );
+    const vpart_id vpart_frame_vertical( "frame" );
     const vpart_id vpart_seat( "seat" );
 
     g->place_player( tripoint( 60, 60, 0 ) );
@@ -334,7 +335,7 @@ TEST_CASE( "npc-movement" )
             if( type == 'A' || type == 'R' || type == 'W' || type == 'M'
                 || type == 'B' || type == 'C' ) {
 
-                here.add_field( p, fd_acid, 3 );
+                here.add_field( p, field_type_id( "fd_acid" ), 3 );
             }
             // spawn rubbles
             if( type == 'R' ) {
@@ -359,7 +360,7 @@ TEST_CASE( "npc-movement" )
                     guy->normalize();
                     guy->randomize();
                     // Repeat until we get an NPC vulnerable to acid
-                } while( guy->is_immune_field( fd_acid ) );
+                } while( guy->is_immune_field( field_type_id( "fd_acid" ) ) );
                 guy->spawn_at_precise( get_map().get_abs_sub().xy(), p );
                 // Set the shopkeep mission; this means that
                 // the NPC deems themselves to be guarding and stops them

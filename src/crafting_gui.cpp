@@ -48,6 +48,7 @@ enum TAB_MODE {
     BATCH
 };
 
+// TODO: Convert these globals to handling categories via generic_factory?
 std::vector<std::string> craft_cat_list;
 std::map<std::string, std::vector<std::string> > craft_subcat_list;
 std::map<std::string, std::string> normalized_names;
@@ -82,16 +83,16 @@ void load_recipe_category( const JsonObject &jsobj )
 
     if( !is_hidden ) {
         craft_cat_list.push_back( category );
+    }
 
-        const std::string cat_name = get_cat_unprefixed( category );
+    const std::string cat_name = get_cat_unprefixed( category );
 
-        craft_subcat_list[category].clear();
-        for( const std::string subcat_id : jsobj.get_array( "recipe_subcategories" ) ) {
-            if( subcat_id.find( "CSC_" + cat_name + "_" ) != 0 && subcat_id != "CSC_ALL" ) {
-                jsobj.throw_error( "Crafting sub-category id has to be prefixed with CSC_<category_name>_" );
-            }
-            craft_subcat_list[category].push_back( subcat_id );
+    craft_subcat_list[category].clear();
+    for( const std::string subcat_id : jsobj.get_array( "recipe_subcategories" ) ) {
+        if( subcat_id.find( "CSC_" + cat_name + "_" ) != 0 && subcat_id != "CSC_ALL" ) {
+            jsobj.throw_error( "Crafting sub-category id has to be prefixed with CSC_<category_name>_" );
         }
+        craft_subcat_list[category].push_back( subcat_id );
     }
 }
 
@@ -538,7 +539,7 @@ const recipe *select_crafting_recipe( int &batch_size )
                 }
                 float maluses = available[line].proficiency_maluses;
                 if( maluses != 1.0 ) {
-                    std::string msg = string_format( _( "<color_yellow>This recipe will take %g%% more time "
+                    std::string msg = string_format( _( "<color_yellow>This recipe will take %g%% of the normal time "
                                                         "because you lack some of the proficiencies used." ), maluses * 100 );
                     ypos += fold_and_print( w_data, point( xpos, ypos ), pane, col, msg );
                 }
@@ -1178,4 +1179,13 @@ bool lcmatch_any( const std::vector< std::vector<T> > &list_of_list, const std::
         }
     }
     return false;
+}
+
+const std::vector<std::string> *subcategories_for_category( const std::string &category )
+{
+    auto it = craft_subcat_list.find( category );
+    if( it != craft_subcat_list.end() ) {
+        return &it->second;
+    }
+    return nullptr;
 }
