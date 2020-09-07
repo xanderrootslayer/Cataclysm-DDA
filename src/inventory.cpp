@@ -264,7 +264,7 @@ char inventory::find_usable_cached_invlet( const itype_id &item_type )
 {
     Character &player_character = get_player_character();
     // Some of our preferred letters might already be used.
-    for( auto invlet : invlet_cache.invlets_for( item_type ) ) {
+    for( char invlet : invlet_cache.invlets_for( item_type ) ) {
         // Don't overwrite user assignments.
         if( assigned_invlet.count( invlet ) ) {
             continue;
@@ -543,7 +543,7 @@ void inventory::form_from_map( map &m, std::vector<tripoint> pts, const Characte
         const cata::optional<vpart_reference> cargo = vp.part_with_feature( "CARGO", true );
 
         if( cargo ) {
-            const auto items = veh->get_items( cargo->part_index() );
+            const vehicle_stack items = veh->get_items( cargo->part_index() );
             *this += std::list<item>( items.begin(), items.end() );
         }
 
@@ -1032,6 +1032,20 @@ enchantment inventory::get_active_enchantment_cache( const Character &owner ) co
         }
     }
     return temp_cache;
+}
+
+int inventory::count_item( const itype_id &item_type ) const
+{
+    int num = 0;
+    const itype_bin bin = get_binned_items();
+    if( bin.find( item_type ) == bin.end() ) {
+        return num;
+    }
+    const std::list<const item *> items = get_binned_items().find( item_type )->second;
+    for( const item *it : items ) {
+        num += it->count();
+    }
+    return num;
 }
 
 void inventory::assign_empty_invlet( item &it, const Character &p, const bool force )

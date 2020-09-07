@@ -1212,7 +1212,7 @@ Character::auto_toggle_bionic_result Character::auto_toggle_bionic( const int b,
             const bool is_perpetual_fuel = tmp_fuel.has_flag( flag_PERPETUAL );
             const bool is_remote_fuel = is_remote_fueled && fuel == remote_fuel;
             float effective_efficiency = get_effective_efficiency( b, bio.info().fuel_efficiency );
-            if( fuel == fuel_type_sun_light ) {
+            if( is_remote_fuel && fuel == fuel_type_sun_light ) {
                 effective_efficiency *= item_worn_with_flag( "SOLARPACK_ON" ).type->solar_efficiency;
             }
             int current_fuel_stock = 0;
@@ -2667,7 +2667,7 @@ void Character::add_bionic( const bionic_id &b )
         return;
     }
 
-    my_bionics->push_back( bionic( b, get_free_invlet( *this->as_player() ) ) );
+    my_bionics->push_back( bionic( b, get_free_invlet( *this ) ) );
     if( b == bio_tools || b == bio_ears ) {
         activate_bionic( my_bionics->size() - 1 );
     }
