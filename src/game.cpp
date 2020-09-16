@@ -38,6 +38,7 @@
 #include "bionics.h"
 #include "bodypart.h"
 #include "butchery_requirements.h"
+#include "cached_options.h"
 #include "cata_assert.h"
 #include "cata_utility.h"
 #include "cata_variant.h"
@@ -189,9 +190,6 @@ class inventory;
 
 const int core_version = 6;
 static constexpr int DANGEROUS_PROXIMITY = 5;
-
-/** Will be set to true when running unit tests */
-bool test_mode = false;
 
 static const activity_id ACT_OPERATION( "ACT_OPERATION" );
 
@@ -4166,8 +4164,8 @@ void game::mon_info( const catacurses::window &w, int hor_padding )
     xcoords[0] = xcoords[4] = width / 3;
     xcoords[1] = xcoords[3] = xcoords[2] = ( width / 3 ) * 2;
     xcoords[5] = xcoords[6] = xcoords[7] = 0;
-    //for the alignment of the 1,2,3 rows on the right edge
-    xcoords[2] -= utf8_width( _( "East:" ) ) - utf8_width( _( "NE:" ) );
+    //for the alignment of the 1,2,3 rows on the right edge (East - NE)
+    xcoords[2] -= widths[2] - widths[1];
     for( int i = 0; i < 8; i++ ) {
         nc_color c = unique_types[i].empty() && unique_mons[i].empty() ? c_dark_gray
                      : ( dangerous[i] ? c_light_red : c_light_gray );
@@ -7176,6 +7174,10 @@ look_around_result game::look_around( const bool show_window, tripoint &center,
             if( !MAP_SHARING::isCompetitive() || MAP_SHARING::isDebugger() ) {
                 display_lighting();
             }
+        } else if( action == "debug_transparency" ) {
+            if( !MAP_SHARING::isCompetitive() || MAP_SHARING::isDebugger() ) {
+                display_transparency();
+            }
         } else if( action == "debug_radiation" ) {
             if( !MAP_SHARING::isCompetitive() || MAP_SHARING::isDebugger() ) {
                 display_radiation();
@@ -7902,7 +7904,8 @@ game::vmenu_ret game::list_items( const std::vector<map_item_stack> &item_list )
             std::string last_cat_name;
             for( int i = std::max( 0, highPEnd );
                  i < std::min( lowPStart, static_cast<int>( filtered_items.size() ) ); i++ ) {
-                const std::string &cat_name = filtered_items[i].example->get_category().name();
+                const std::string &cat_name =
+                    filtered_items[i].example->get_category_of_contents().name();
                 if( cat_name != last_cat_name ) {
                     mSortCategory[i + iCatSortNum++] = cat_name;
                     last_cat_name = cat_name;
@@ -11777,6 +11780,13 @@ void game::display_radiation()
 {
     if( use_tiles ) {
         display_toggle_overlay( ACTION_DISPLAY_RADIATION );
+    }
+}
+
+void game::display_transparency()
+{
+    if( use_tiles ) {
+        display_toggle_overlay( ACTION_DISPLAY_TRANSPARENCY );
     }
 }
 

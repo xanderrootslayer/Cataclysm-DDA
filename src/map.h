@@ -124,7 +124,7 @@ struct visibility_variables {
     int g_light_level = 0;
     int u_clairvoyance = 0;
     float vision_threshold = 0.0f;
-    cata::optional<field_type_str_id> clairvoyance_field;
+    cata::optional<field_type_id> clairvoyance_field;
 };
 
 struct bash_params {
@@ -166,6 +166,9 @@ struct level_cache {
     bool transparency_cache_dirty = false;
     bool outside_cache_dirty = false;
     bool floor_cache_dirty = false;
+    bool seen_cache_dirty = false;
+    // This is a single value indicating that the entire level is floored.
+    bool no_floor_gaps = false;
 
     four_quadrants lm[MAPSIZE_X][MAPSIZE_Y];
     float sm[MAPSIZE_X][MAPSIZE_Y];
@@ -174,10 +177,25 @@ struct level_cache {
     float light_source_buffer[MAPSIZE_X][MAPSIZE_Y];
     bool outside_cache[MAPSIZE_X][MAPSIZE_Y];
     bool floor_cache[MAPSIZE_X][MAPSIZE_Y];
+
+    // stores cached transparency of the tiles
+    // units: "transparency" (see LIGHT_TRANSPARENCY_OPEN_AIR)
     float transparency_cache[MAPSIZE_X][MAPSIZE_Y];
+
+    // stores "adjusted transparency" of the tiles
+    // initial values derived from transparency_cache, uses same units
+    // examples of adjustment: changed transparency on player's tile and special case for crouching
     float vision_transparency_cache[MAPSIZE_X][MAPSIZE_Y];
+
+    // stores "visibility" of the tiles to the player
+    // values range from 1 (fully visible to player) to 0 (not visible)
     float seen_cache[MAPSIZE_X][MAPSIZE_Y];
+
+    // same as `seen_cache` (same units) but contains values for cameras and mirrors
+    // effective "visibility_cache" is calculated as "max(seen_cache, camera_cache)"
     float camera_cache[MAPSIZE_X][MAPSIZE_Y];
+
+    // stores resulting apparent brightness to player, calculated by map::apparent_light_at
     lit_level visibility_cache[MAPSIZE_X][MAPSIZE_Y];
     std::bitset<MAPSIZE_X *MAPSIZE_Y> map_memory_seen_cache;
     std::bitset<MAPSIZE *MAPSIZE> field_cache;
@@ -188,7 +206,6 @@ struct level_cache {
     std::set<vehicle *> vehicle_list;
     std::set<vehicle *> zone_vehicles;
 
-    int max_populated_zlev = 0;
 };
 
 /**
@@ -239,6 +256,19 @@ class map
             }
         }
 
+        void set_seen_cache_dirty( const tripoint change_location ) {
+            if( inbounds_z( change_location.z ) ) {
+                level_cache &cache = get_cache( change_location.z );
+                if( cache.seen_cache_dirty ) {
+                    return;
+                }
+                if( change_location == tripoint_zero ||
+                    cache.seen_cache[change_location.x][change_location.y] != 0.0 ) {
+                    cache.seen_cache_dirty = true;
+                }
+            }
+        }
+
         void set_outside_cache_dirty( const int zlev ) {
             if( inbounds_z( zlev ) ) {
                 get_cache( zlev ).outside_cache_dirty = true;
@@ -266,6 +296,7 @@ class map
                 level_cache &ch = get_cache( zlev );
                 ch.floor_cache_dirty = true;
                 ch.transparency_cache_dirty = true;
+                ch.seen_cache_dirty = true;
                 ch.outside_cache_dirty = true;
             }
         }
@@ -1581,9 +1612,12 @@ class map
         // Used to determine if seen cache should be rebuilt.
         bool build_transparency_cache( int zlev );
         bool build_vision_transparency_cache( int zlev );
-        void build_sunlight_cache( int zlev_min, int zlev_max );
+        // fills lm with sunlight. pzlev is current player's zlevel
+        void build_sunlight_cache( int pzlev );
     public:
         void build_outside_cache( int zlev );
+        // Get a bitmap indicating which layers are potentially visible from the target layer.
+        std::bitset<OVERMAP_LAYERS> get_inter_level_visibility( int origin_zlevel )const ;
         // Builds a floor cache and returns true if the cache was invalidated.
         // Used to determine if seen cache should be rebuilt.
         bool build_floor_cache( int zlev );
@@ -1662,8 +1696,18 @@ class map
          */
         void setsubmap( size_t grididx, submap *smap );
     private:
-        // Caclulate the greatest populated zlevel in the loaded submaps and save in the level cache.
-        void calc_max_populated_zlev();
+        /** Caclulate the greatest populated zlevel in the loaded submaps and save in the level cache.
+         * fills the map::max_populated_zlev and returns it
+         * @return max_populated_zlev value
+         */
+        int calc_max_populated_zlev();
+        /**
+         * Conditionally invalidates max_pupulated_zlev cache if the submap uniformity change occurs above current
+         *  max_pupulated_zlev value
+         * @param zlev zlevel where uniformity change occured
+         */
+        void invalidate_max_populated_zlev( int zlev );
+
         /**
          * Internal versions of public functions to avoid checking same variables multiple times.
          * They lack safety checks, because their callers already do those.
@@ -1791,6 +1835,10 @@ class map
         pathfinding_cache &get_pathfinding_cache( int zlev ) const;
 
         visibility_variables visibility_variables_cache;
+
+        // caches the highest zlevel above which all zlevels are uniform
+        // !value || value->first != map::abs_sub means cache is invalid
+        cata::optional<std::pair<tripoint, int>> max_populated_zlev = cata::nullopt;
 
     public:
         const level_cache &get_cache_ref( int zlev ) const {

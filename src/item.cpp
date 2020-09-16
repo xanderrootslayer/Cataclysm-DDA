@@ -174,7 +174,6 @@ static const std::string flag_DANGEROUS( "DANGEROUS" );
 static const std::string flag_DEEP_WATER( "DEEP_WATER" );
 static const std::string flag_DIAMOND( "DIAMOND" );
 static const std::string flag_DISABLE_SIGHTS( "DISABLE_SIGHTS" );
-static const std::string flag_ETHEREAL_ITEM( "ETHEREAL_ITEM" );
 static const std::string flag_FAKE_MILL( "FAKE_MILL" );
 static const std::string flag_FAKE_SMOKE( "FAKE_SMOKE" );
 static const std::string flag_FIELD_DRESS( "FIELD_DRESS" );
@@ -1622,7 +1621,7 @@ void item::basic_info( std::vector<iteminfo> &info, const iteminfo_query *parts,
     }
     if( parts->test( iteminfo_parts::BASE_CATEGORY ) ) {
         info.push_back( iteminfo( "BASE", _( "Category: " ),
-                                  "<header>" + get_category().name() + "</header>" ) );
+                                  "<header>" + get_category_shallow().name() + "</header>" ) );
     }
 
     if( parts->test( iteminfo_parts::DESCRIPTION ) ) {
@@ -3800,6 +3799,11 @@ void item::final_info( std::vector<iteminfo> &info, const iteminfo_query *parts,
 
     armor_fit_info( info, parts, batch, debug );
 
+    if( ethereal ) {
+        info.emplace_back( "DESCRIPTION",
+                           _( "This item disappears as soon as its timer runs out, unless it is permanent or a comestible." ) );
+    }
+
     if( has_flag( flag_RADIO_ACTIVATION ) &&
         parts->test( iteminfo_parts::DESCRIPTION_RADIO_ACTIVATION ) ) {
         if( has_flag( flag_RADIO_MOD ) ) {
@@ -3906,9 +3910,11 @@ void item::final_info( std::vector<iteminfo> &info, const iteminfo_query *parts,
         []( const itype * e ) {
             return e->nname( 1 );
         } ) );
+        info.back().sName += ".";
     }
 
     if( parts->test( iteminfo_parts::DESCRIPTION_ACTIVATABLE_TRANSFORMATION ) ) {
+        insert_separation_line( info );
         for( const auto &u : type->use_methods ) {
             const delayed_transform_iuse *tt = dynamic_cast<const delayed_transform_iuse *>
                                                ( u.second.get_actor_ptr() );
@@ -4636,7 +4642,7 @@ std::string item::tname( unsigned int quantity, bool with_prefix, unsigned int t
             tagtext += _( " (hallucinogenic)" );
         }
     }
-    if( has_flag( flag_ETHEREAL_ITEM ) ) {
+    if( ethereal ) {
         tagtext += string_format( _( " (%s turns)" ), get_var( "ethereal" ) );
     } else if( goes_bad() || is_food() ) {
         if( item_tags.count( "DIRTY" ) ) {
@@ -5594,9 +5600,9 @@ int item::spoilage_sort_order()
     }
 
     if( get_comestible() ) {
-        if( get_category().get_id() == item_category_food ) {
+        if( get_category_shallow().get_id() == item_category_food ) {
             return bottom - 3;
-        } else if( get_category().get_id() == item_category_drugs ) {
+        } else if( get_category_shallow().get_id() == item_category_drugs ) {
             return bottom - 2;
         } else {
             return bottom - 1;
@@ -6788,7 +6794,7 @@ bool item::is_book() const
 
 bool item::is_map() const
 {
-    return get_category().get_id() == item_category_maps;
+    return get_category_shallow().get_id() == item_category_maps;
 }
 
 bool item::seal()
@@ -6954,7 +6960,7 @@ bool item::is_salvageable() const
 
 bool item::is_disassemblable() const
 {
-    return recipe_dictionary::get_uncraft( typeId() ) && !has_flag( flag_ETHEREAL_ITEM );
+    return !ethereal && recipe_dictionary::get_uncraft( typeId() );
 }
 
 bool item::is_craft() const
@@ -7188,8 +7194,8 @@ const material_type &item::get_base_material() const
 
 bool item::operator<( const item &other ) const
 {
-    const item_category &cat_a = get_category();
-    const item_category &cat_b = other.get_category();
+    const item_category &cat_a = get_category_of_contents();
+    const item_category &cat_b = other.get_category_of_contents();
     if( cat_a != cat_b ) {
         return cat_a < cat_b;
     } else {
@@ -7202,8 +7208,7 @@ bool item::operator<( const item &other ) const
         } else {
             std::string n1 = this->type->nname( 1 );
             std::string n2 = other.type->nname( 1 );
-            return std::lexicographical_compare( n1.begin(), n1.end(),
-                                                 n2.begin(), n2.end(), sort_case_insensitive_less() );
+            return localized_compare( n1, n2 );
         }
     }
 }
@@ -7729,6 +7734,15 @@ item *item::gunmod_find( const itype_id &mod )
 const item *item::gunmod_find( const itype_id &mod ) const
 {
     return const_cast<item *>( this )->gunmod_find( mod );
+}
+
+item *item::gunmod_find_by_flag( const std::string &flag )
+{
+    std::vector<item *> mods = gunmods();
+    auto it = std::find_if( mods.begin(), mods.end(), [&flag]( item * e ) {
+        return e->has_flag( flag );
+    } );
+    return it != mods.end() ? *it : nullptr;
 }
 
 ret_val<bool> item::is_gunmod_compatible( const item &mod ) const
@@ -8757,7 +8771,7 @@ void item::set_snippet( const snippet_id &id )
     snip_id = id;
 }
 
-const item_category &item::get_category() const
+const item_category &item::get_category_shallow() const
 {
     static item_category null_category;
     return type->category_force.is_valid() ? type->category_force.obj() : null_category;
@@ -8766,9 +8780,9 @@ const item_category &item::get_category() const
 const item_category &item::get_category_of_contents() const
 {
     if( type->category_force == item_category_container && contents.num_item_stacks() == 1 ) {
-        return contents.only_item().get_category();
+        return contents.only_item().get_category_of_contents();
     } else {
-        return this->get_category();
+        return this->get_category_shallow();
     }
 }
 
@@ -8984,7 +8998,7 @@ bool item::needs_processing() const
 {
     bool need_process = false;
     visit_items( [&need_process]( const item * it ) {
-        if( it->active || it->has_flag( flag_RADIO_ACTIVATION ) || it->has_flag( flag_ETHEREAL_ITEM ) ||
+        if( it->active || it->ethereal || it->has_flag( flag_RADIO_ACTIVATION ) ||
             it->is_food() || it->has_relic_recharge() ) {
             need_process = true;
             return VisitResponse::ABORT;
@@ -9858,7 +9872,7 @@ void item::set_last_temp_check( const time_point &pt )
 bool item::process_internal( player *carrier, const tripoint &pos,
                              float insulation, const temperature_flag flag, float spoil_modifier )
 {
-    if( has_flag( flag_ETHEREAL_ITEM ) ) {
+    if( ethereal ) {
         if( !has_var( "ethereal" ) ) {
             return true;
         }

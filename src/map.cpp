@@ -17,6 +17,7 @@
 #include "ammo_effect.h"
 #include "avatar.h"
 #include "basecamp.h"
+#include "cached_options.h"
 #include "calendar.h"
 #include "cata_assert.h"
 #include "character.h"
@@ -689,7 +690,7 @@ vehicle *map::move_vehicle( vehicle &veh, const tripoint &dp, const tileray &fac
     if( veh.is_towing() ) {
         veh.do_towing_move();
         if( veh.tow_data.get_towed()->tow_cable_too_far() ) {
-            add_msg( m_info, _( "A towing cable snaps off of the %s." ),
+            add_msg( m_info, _( "A towing cable snaps off of %s." ),
                      veh.tow_data.get_towed()->disp_name() );
             veh.tow_data.get_towed()->invalidate_towing( true );
         }
@@ -1212,6 +1213,7 @@ bool map::displace_vehicle( vehicle &veh, const tripoint &dp, const bool adjust_
         dst_submap->vehicles.push_back( std::move( *src_submap_veh_it ) );
         src_submap->vehicles.erase( src_submap_veh_it );
         dst_submap->is_uniform = false;
+        invalidate_max_populated_zlev( dst.z );
     }
     if( need_update ) {
         g->update_map( player_character );
@@ -1389,6 +1391,7 @@ void map::furn_set( const tripoint &p, const furn_id &new_furniture )
     }
     if( old_t.transparent != new_t.transparent ) {
         set_transparency_cache_dirty( p.z );
+        set_seen_cache_dirty( p );
     }
 
     if( old_t.has_flag( TFLAG_INDOORS ) != new_t.has_flag( TFLAG_INDOORS ) ) {
@@ -1397,7 +1400,10 @@ void map::furn_set( const tripoint &p, const furn_id &new_furniture )
 
     if( old_t.has_flag( TFLAG_NO_FLOOR ) != new_t.has_flag( TFLAG_NO_FLOOR ) ) {
         set_floor_cache_dirty( p.z );
+        set_seen_cache_dirty( p );
     }
+    invalidate_max_populated_zlev( p.z );
+
     set_memory_seen_cache_dirty( p );
 
     // TODO: Limit to changes that affect move cost, traps and stairs
@@ -1695,6 +1701,7 @@ bool map::ter_set( const tripoint &p, const ter_id &new_terrain )
 
     if( old_t.transparent != new_t.transparent ) {
         set_transparency_cache_dirty( p.z );
+        set_seen_cache_dirty( p );
     }
 
     if( old_t.has_flag( TFLAG_INDOORS ) != new_t.has_flag( TFLAG_INDOORS ) ) {
@@ -1705,7 +1712,10 @@ bool map::ter_set( const tripoint &p, const ter_id &new_terrain )
         set_floor_cache_dirty( p.z );
         // It's a set, not a flag
         support_cache_dirty.insert( p );
+        set_seen_cache_dirty( p );
     }
+    invalidate_max_populated_zlev( p.z );
+
     set_memory_seen_cache_dirty( p );
 
     // TODO: Limit to changes that affect move cost, traps and stairs
@@ -4470,6 +4480,8 @@ item &map::add_item( const tripoint &p, item new_item )
     }
 
     current_submap->is_uniform = false;
+    invalidate_max_populated_zlev( p.z );
+
     current_submap->update_lum_add( l, new_item );
 
     const map_stack::iterator new_pos = current_submap->get_items( l ).insert( new_item );
@@ -5536,15 +5548,12 @@ bool map::add_field( const tripoint &p, const field_type_id &type, int intensity
         return false;
     }
 
-    if( intensity == INT_MAX ) {
-        intensity = type.obj().get_max_intensity();
-    }
-    intensity = std::min( intensity, type.obj().get_max_intensity() );
-    if( intensity <= 0 ) {
+    if( !type ) {
         return false;
     }
 
-    if( !type.id() ) {
+    intensity = std::min( intensity, type.obj().get_max_intensity() );
+    if( intensity <= 0 ) {
         return false;
     }
 
@@ -5555,6 +5564,7 @@ bool map::add_field( const tripoint &p, const field_type_id &type, int intensity
         return false;
     }
     current_submap->is_uniform = false;
+    invalidate_max_populated_zlev( p.z );
 
     if( current_submap->get_field( l ).add_field( type, intensity, age ) ) {
         //Only adding it to the count if it doesn't exist.
@@ -5573,6 +5583,7 @@ bool map::add_field( const tripoint &p, const field_type_id &type, int intensity
     // Dirty the transparency cache now that field processing doesn't always do it
     // TODO: Make it skip transparent fields
     set_transparency_cache_dirty( p.z );
+    set_seen_cache_dirty( p );
 
     if( type.obj().is_dangerous() ) {
         set_pathfinding_cache_dirty( p.z );
@@ -5608,6 +5619,7 @@ void map::remove_field( const tripoint &p, const field_type_id &field_to_remove 
         const auto &fdata = field_to_remove.obj();
         if( !fdata.is_transparent() ) {
             set_transparency_cache_dirty( p.z );
+            set_seen_cache_dirty( p );
         }
         if( fdata.is_dangerous() ) {
             set_pathfinding_cache_dirty( p.z );
@@ -6910,9 +6922,6 @@ void map::shift( const point &sp )
             support_cache_dirty.insert( pt + point( -sp.x * SEEX, -sp.y * SEEY ) );
         }
     }
-    if( zlevels ) {
-        calc_max_populated_zlev();
-    }
 }
 
 void map::vertical_shift( const int newz )
@@ -7043,6 +7052,7 @@ void map::loadn( const tripoint &grid, const bool update_vehicles, bool _actuali
 
     // New submap changes the content of the map and all caches must be recalculated
     set_transparency_cache_dirty( grid.z );
+    set_seen_cache_dirty( tripoint_zero );
     set_outside_cache_dirty( grid.z );
     set_floor_cache_dirty( grid.z );
     set_pathfinding_cache_dirty( grid.z );
@@ -8057,6 +8067,29 @@ void map::build_obstacle_cache( const tripoint &start, const tripoint &end,
     }
 }
 
+// If this ever shows up on profiling, maybe prepopulate one of these in the map cache for each level.
+std::bitset<OVERMAP_LAYERS> map::get_inter_level_visibility( const int origin_zlevel ) const
+{
+    std::bitset<OVERMAP_LAYERS> seen_levels;
+    seen_levels.set( origin_zlevel + OVERMAP_DEPTH );
+    for( int z = origin_zlevel + 1; z <= OVERMAP_HEIGHT; ++z ) {
+        if( get_cache_ref( z ).no_floor_gaps ) {
+            break;
+        } else {
+            seen_levels.set( z + OVERMAP_DEPTH );
+        }
+    }
+    for( int z = origin_zlevel; z > -OVERMAP_DEPTH; --z ) {
+        if( get_cache_ref( z ).no_floor_gaps ) {
+            break;
+        } else {
+            // No floor means we can see the *lower* level.
+            seen_levels.set( z - 1 + OVERMAP_DEPTH );
+        }
+    }
+    return seen_levels;
+}
+
 bool map::build_floor_cache( const int zlev )
 {
     auto &ch = get_cache( zlev );
@@ -8067,6 +8100,8 @@ bool map::build_floor_cache( const int zlev )
     auto &floor_cache = ch.floor_cache;
     std::uninitialized_fill_n(
         &floor_cache[0][0], ( MAPSIZE_X ) * ( MAPSIZE_Y ), true );
+    bool &no_floor_gaps = ch.no_floor_gaps;
+    no_floor_gaps = true;
 
     for( int smx = 0; smx < my_MAPSIZE; ++smx ) {
         for( int smy = 0; smy < my_MAPSIZE; ++smy ) {
@@ -8084,6 +8119,7 @@ bool map::build_floor_cache( const int zlev )
                         const int x = sx + smx * SEEX;
                         const int y = sy + smy * SEEY;
                         floor_cache[x][y] = false;
+                        no_floor_gaps = false;
                     }
                 }
             }
@@ -8152,8 +8188,9 @@ void map::build_map_cache( const int zlev, bool skip_lightmap )
     bool seen_cache_dirty = false;
     for( int z = minz; z <= maxz; z++ ) {
         build_outside_cache( z );
-        seen_cache_dirty |= build_transparency_cache( z );
+        build_transparency_cache( z );
         seen_cache_dirty |= build_floor_cache( z );
+        seen_cache_dirty |= get_cache( z ).seen_cache_dirty;
         do_vehicle_caching( z );
     }
     seen_cache_dirty |= build_vision_transparency_cache( zlev );
@@ -8278,6 +8315,7 @@ void map::draw_fill_background( const ter_id &type )
 {
     // Need to explicitly set caches dirty - set_ter would do it before
     set_transparency_cache_dirty( abs_sub.z );
+    set_seen_cache_dirty( tripoint_zero );
     set_outside_cache_dirty( abs_sub.z );
     set_pathfinding_cache_dirty( abs_sub.z );
 
@@ -8701,7 +8739,6 @@ level_cache::level_cache()
     std::fill_n( &visibility_cache[0][0], map_dimensions, lit_level::DARK );
     veh_in_active_range = false;
     std::fill_n( &veh_exists_at[0][0], map_dimensions, false );
-    max_populated_zlev = OVERMAP_HEIGHT;
 }
 
 pathfinding_cache::pathfinding_cache()
@@ -8879,8 +8916,13 @@ bool map::is_cornerfloor( const tripoint &p ) const
     return false;
 }
 
-void map::calc_max_populated_zlev()
+int map::calc_max_populated_zlev()
 {
+    // cache is filled and valid, skip recalculation
+    if( max_populated_zlev && max_populated_zlev->first == get_abs_sub() ) {
+        return max_populated_zlev->second;
+    }
+
     // We'll assume ground level is populated
     int max_z = 0;
 
@@ -8905,8 +8947,14 @@ void map::calc_max_populated_zlev()
             }
         }
     }
-    // This will be the same for every zlevel in the cache, so just put it in all of them
-    for( int z = -OVERMAP_DEPTH; z <= OVERMAP_HEIGHT; z++ ) {
-        get_cache( z ).max_populated_zlev = max_z;
+
+    max_populated_zlev = std::pair<tripoint, int>( get_abs_sub(), max_z );
+    return max_z;
+}
+
+void map::invalidate_max_populated_zlev( int zlev )
+{
+    if( max_populated_zlev && max_populated_zlev->second < zlev ) {
+        max_populated_zlev->second = zlev;
     }
 }

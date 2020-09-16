@@ -592,9 +592,16 @@ void item_pocket::casings_handle( const std::function<bool( item & )> &func )
 
 void item_pocket::handle_liquid_or_spill( Character &guy, const item *avoid )
 {
+    if( guy.is_npc() ) {
+        spill_contents( guy.pos() );
+        return;
+    }
+
     for( auto iter = contents.begin(); iter != contents.end(); ) {
         if( iter->made_of( phase_id::LIQUID ) ) {
-            liquid_handler::handle_liquid( *iter, avoid, 1 );
+            while( iter->charges > 0 && liquid_handler::handle_liquid( *iter, avoid, 1 ) ) {
+                // query until completely handled or explicitly canceled
+            }
             if( iter->charges == 0 ) {
                 iter = contents.erase( iter );
             } else {
@@ -1525,7 +1532,7 @@ bool item_pocket::favorite_settings::is_better_favorite(
     const item &it, const item_pocket::favorite_settings &rhs ) const
 {
     const itype_id &id = it.typeId();
-    const item_category_id &cat = it.get_category().id;
+    const item_category_id &cat = it.get_category_of_contents().id;
 
     if( category_blacklist.count( cat ) || item_blacklist.count( id ) ||
         ( !category_whitelist.empty() && !category_whitelist.count( cat ) ) ||

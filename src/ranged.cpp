@@ -16,6 +16,7 @@
 #include "avatar.h"
 #include "ballistics.h"
 #include "bodypart.h"
+#include "cached_options.h"
 #include "calendar.h"
 #include "cata_utility.h"
 #include "catacharset.h"
@@ -122,9 +123,9 @@ static const std::string flag_VEHICLE( "VEHICLE" );
 static const trait_id trait_PYROMANIA( "PYROMANIA" );
 
 static projectile make_gun_projectile( const item &gun );
-int time_to_attack( const Character &p, const itype &firing );
+static int time_to_attack( const Character &p, const itype &firing );
 static void cycle_action( item &weap, const tripoint &pos );
-void make_gun_sound_effect( const player &p, bool burst, item *weapon );
+static void make_gun_sound_effect( const player &p, bool burst, item *weapon );
 
 class target_ui
 {
@@ -826,6 +827,15 @@ int player::fire_gun( const tripoint &target, int shots, item &gun )
 
         if( shot.hit_critter ) {
             hits++;
+
+            if( monster *m = shot.hit_critter->as_monster() ) {
+                get_event_bus().send<event_type::character_ranged_attacks_monster>(
+                    getID(), gun.typeId(), m->type->id );
+            } else if( Character *c = shot.hit_critter->as_character() ) {
+                get_event_bus().send<event_type::character_ranged_attacks_character>(
+                    getID(), gun.typeId(), c->getID(), c->get_name() );
+            }
+
         }
 
         if( gun.gun_skill() == skill_launcher ) {
@@ -864,9 +874,6 @@ int player::fire_gun( const tripoint &target, int shots, item &gun )
     return curshot;
 }
 
-// TODO: Method
-// Silence warning about missing prototype.
-int throw_cost( const player &c, const item &to_throw );
 int throw_cost( const player &c, const item &to_throw )
 {
     // Very similar to player::attack_speed
@@ -1573,11 +1580,13 @@ static void cycle_action( item &weap, const tripoint &pos )
         cargo = vp->vehicle().get_parts_at( pos, "CARGO", part_status_flag::any );
     }
 
+    item *brass_catcher = weap.gunmod_find_by_flag( "BRASS_CATCHER" );
     if( weap.ammo_data() && weap.ammo_data()->ammo->casing ) {
         const itype_id casing = *weap.ammo_data()->ammo->casing;
-        if( weap.has_flag( "RELOAD_EJECT" ) || weap.gunmod_find( itype_brass_catcher ) ) {
+        if( weap.has_flag( "RELOAD_EJECT" ) ) {
             weap.put_in( item( casing ).set_flag( "CASING" ), item_pocket::pocket_type::CONTAINER );
-        } else {
+        } else if( !( brass_catcher && brass_catcher->put_in( item( casing ),
+                      item_pocket::pocket_type::CONTAINER ).success() ) ) {
             if( cargo.empty() ) {
                 here.add_item_or_charges( eject, item( casing ) );
             } else {
@@ -1593,13 +1602,13 @@ static void cycle_action( item &weap, const tripoint &pos )
     const item *mag = weap.magazine_current();
     if( mag && mag->type->magazine->linkage ) {
         item linkage( *mag->type->magazine->linkage, calendar::turn, 1 );
-        if( weap.gunmod_find( itype_brass_catcher ) ) {
-            linkage.set_flag( "CASING" );
-            weap.put_in( linkage, item_pocket::pocket_type::CONTAINER );
-        } else if( cargo.empty() ) {
-            here.add_item_or_charges( eject, linkage );
-        } else {
-            vp->vehicle().add_item( *cargo.front(), linkage );
+        if( !( brass_catcher &&
+               brass_catcher->put_in( linkage, item_pocket::pocket_type::CONTAINER ).success() ) ) {
+            if( cargo.empty() ) {
+                here.add_item_or_charges( eject, linkage );
+            } else {
+                vp->vehicle().add_item( *cargo.front(), linkage );
+            }
         }
     }
 }
