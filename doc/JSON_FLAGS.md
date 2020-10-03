@@ -588,6 +588,7 @@ List of known flags, used in both `terrain.json` and `furniture.json`.
 - ```SHORT``` Feature too short to collide with vehicle protrusions. (mirrors, blades).
 - ```SIGN``` Show written message on examine.
 - ```SMALL_PASSAGE``` This terrain or furniture is too small for large or huge creatures to pass through.
+- ```SUN_ROOF_ABOVE``` This furniture (terrain is not supported currently) has a "fake roof" above, that blocks sunlight. Special hack for #44421, to be removed later. 
 - ```SUPPORTS_ROOF``` Used as a boundary for roof construction.
 - ```SUPPRESS_SMOKE``` Prevents smoke from fires; used by ventilated wood stoves, etc.
 - ```SWIMMABLE``` Player and monsters can swim through it.
@@ -702,6 +703,7 @@ These flags can be applied via JSON item definition to most items.  Not to be co
 - ```SLEEP_IGNORE``` ... This item is not shown as before-sleep warning.
 - ```SLOW_WIELD``` ... Has an additional time penalty upon wielding. For melee weapons and guns this is offset by the relevant skill. Stacks with "NEEDS_UNFOLD".
 - ```TACK``` ... Item can be used as tack for a mount.
+- ```TARDIS``` ... Container item with this flag bypasses internal checks for pocket data, so inside it could be bigger than on the outside, and could hold items that otherwise won't fit its dimensions.
 - ```TIE_UP``` ... Item can be used to tie up a creature.
 - ```TINDER``` ... This item can be used as tinder for lighting a fire with a REQUIRES_TINDER flagged firestarter.
 - ```TRADER_AVOID``` ... NPCs will not start with this item. Use this for active items (e.g. flashlight (on)), dangerous items (e.g. active bomb), fake item or unusual items (e.g. unique quest item).

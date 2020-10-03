@@ -739,20 +739,26 @@ static void smash()
         }
     }
 
+    bool should_pulp = false;
     for( const item &maybe_corpse : here.i_at( smashp ) ) {
         if( maybe_corpse.is_corpse() && maybe_corpse.damage() < maybe_corpse.max_damage() &&
             maybe_corpse.can_revive() ) {
-            // do activity forever. ACT_PULP stops itself
             if( maybe_corpse.get_mtype()->bloodType()->has_acid ) {
                 if( !query_yn( _( "Are you sure you want to pulp an acid filled corpse?" ) ) ) {
                     return; // Player doesn't want an acid bath
                 }
             }
-            player_character.assign_activity( ACT_PULP, calendar::INDEFINITELY_LONG, 0 );
-            player_character.activity.placement = here.getabs( smashp );
-            return; // don't smash terrain if we've smashed a corpse
+            should_pulp = true; // There is at least one corpse to pulp
         }
     }
+
+    if( should_pulp ) {
+        // do activity forever. ACT_PULP stops itself
+        player_character.assign_activity( ACT_PULP, calendar::INDEFINITELY_LONG, 0 );
+        player_character.activity.placement = here.getabs( smashp );
+        return; // don't smash terrain if we've smashed a corpse
+    }
+
     vehicle *veh = veh_pointer_or_null( here.veh_at( smashp ) );
     if( veh != nullptr ) {
         if( !veh->handle_potential_theft( player_character ) ) {
@@ -800,10 +806,13 @@ static void smash()
         smashskill = std::min( best_part_to_smash.second + min_smashskill, max_smashskill );
     }
     didit = here.bash( smashp, smashskill, false, false, smash_floor ).did_bash;
+    // Weariness scaling
+    float weary_mult = 1.0f;
     if( didit ) {
         if( !mech_smash ) {
             player_character.increase_activity_level( MODERATE_EXERCISE );
             player_character.handle_melee_wear( player_character.weapon );
+            weary_mult = 1.0f / player_character.exertion_adjusted_move_multiplier( MODERATE_EXERCISE );
 
             const int mod_sta = 2 * player_character.get_standard_stamina_cost();
             player_character.mod_stamina( mod_sta );
@@ -831,7 +840,7 @@ static void smash()
                 player_character.check_dead_state();
             }
         }
-        player_character.moves -= move_cost;
+        player_character.moves -= move_cost * weary_mult;
 
         if( smashskill < here.bash_resistance( smashp ) && one_in( 10 ) ) {
             if( here.has_furn( smashp ) && here.furn( smashp ).obj().bash.str_min != -1 ) {

@@ -1136,6 +1136,12 @@ std::string trim_punctuation_marks( const std::string &s )
 using char_t = std::string::value_type;
 std::string to_upper_case( const std::string &s )
 {
+    if( std::locale().name() != "en_US.UTF-8" && std::locale().name() != "C" ) {
+        const auto &f = std::use_facet<std::ctype<wchar_t>>( std::locale() );
+        std::wstring wstr = utf8_to_wstr( s );
+        f.toupper( &wstr[0], &wstr[0] + wstr.size() );
+        return wstr_to_utf8( wstr );
+    }
     std::string res;
     std::transform( s.begin(), s.end(), std::back_inserter( res ), []( char_t ch ) {
         return std::use_facet<std::ctype<char_t>>( std::locale() ).toupper( ch );
@@ -1957,6 +1963,23 @@ void insert_table( const catacurses::window &w, int pad, int line, int columns,
         }
     }
     wattroff( w, FG );
+}
+
+
+std::string satiety_bar( const int calpereffv )
+{
+    // Arbitrary max value we will cap our vague display to. Will be lower than the actual max value, but scaling fixes that.
+    constexpr int max_cal_per_effective_vol = 1500;
+    //Scaling the values.
+    const int scaled_max = std::sqrt( max_cal_per_effective_vol ) / 4;
+    const int scaled_cal = std::sqrt( calpereffv ) / 4;
+    const std::pair<std::string, nc_color> nourishment_bar = get_bar(
+                scaled_cal, scaled_max, 5, true );
+    // Colorize the bar.
+    std::string result = colorize( nourishment_bar.first, nourishment_bar.second );
+    // Pad to 5 characters with dots.
+    result += std::string( 5 - nourishment_bar.first.length(), '.' );
+    return result;
 }
 
 scrollingcombattext::cSCT::cSCT( const point &p_pos, const direction p_oDir,

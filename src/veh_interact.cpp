@@ -240,6 +240,8 @@ veh_interact::veh_interact( vehicle &veh, const point &p )
     main_context.register_action( "FUEL_LIST_UP" );
     main_context.register_action( "DESC_LIST_DOWN" );
     main_context.register_action( "DESC_LIST_UP" );
+    main_context.register_action( "PAGE_DOWN" );
+    main_context.register_action( "PAGE_UP" );
     main_context.register_action( "CONFIRM" );
     main_context.register_action( "HELP_KEYBINDINGS" );
     main_context.register_action( "FILTER" );
@@ -406,6 +408,7 @@ void veh_interact::do_main_loop()
     while( !finish ) {
         calc_overview();
         ui_manager::redraw();
+        const int description_scroll_lines = catacurses::getmaxy( w_parts ) - 4;
         const std::string action = main_context.handle_input();
         msg.reset();
         if( const cata::optional<tripoint> vec = main_context.get_direction( action ) ) {
@@ -484,6 +487,10 @@ void veh_interact::do_main_loop()
             move_cursor( point_zero, 1 );
         } else if( action == "DESC_LIST_UP" ) {
             move_cursor( point_zero, -1 );
+        } else if( action == "PAGE_DOWN" ) {
+            move_cursor( point_zero, description_scroll_lines );
+        } else if( action == "PAGE_UP" ) {
+            move_cursor( point_zero, -description_scroll_lines );
         }
         if( sel_cmd != ' ' ) {
             finish = true;
@@ -1084,7 +1091,7 @@ void veh_interact::do_install()
                         std::string disp_name = sel_vpart_info->name();
                         for( const auto &vp_variant_pair : vpart_variants ) {
                             if( vp_variant_pair.first == vp_variant.first ) {
-                                disp_name += " " + _( vp_variant_pair.second );
+                                disp_name += " " + vp_variant_pair.second;
                                 break;
                             }
                         }
@@ -1529,13 +1536,12 @@ void veh_interact::calc_overview()
                                             round_up( vol_L, 1 ) ) );
             }
         };
-        if( vpr.part().is_tank() && vpr.part().is_available() ) {
-            overview_opts.emplace_back( "TANK", &vpr.part(), next_hotkey( vpr.part(), hotkey ),
-                                        tank_details );
-        } else if( vpr.part().is_fuel_store() && !( vpr.part().is_battery() ||
-                   vpr.part().is_reactor() ) && !vpr.part().is_broken() ) {
-            overview_opts.emplace_back( "TANK", &vpr.part(), next_hotkey( vpr.part(), hotkey ),
-                                        no_tank_details );
+
+        vehicle_part &vp = vpr.part();
+        if( vp.is_tank() && vp.is_available() ) {
+            overview_opts.emplace_back( "TANK", &vp, next_hotkey( vp, hotkey ), tank_details );
+        } else if( vp.is_fuel_store() && !( vp.is_turret() || vp.is_battery() || vp.is_reactor() ) ) {
+            overview_opts.emplace_back( "TANK", &vp, next_hotkey( vp, hotkey ), no_tank_details );
         }
     }
 
