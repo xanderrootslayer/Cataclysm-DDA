@@ -5073,6 +5073,35 @@ units::length item::length() const
     return max;
 }
 
+units::volume item::collapsed_volume_delta() const
+{
+    units::volume delta_volume = 0_ml;
+
+    // TODO: implement stock_length property for guns
+    if( is_gun() && has_flag( flag_COLLAPSIBLE_STOCK ) ) {
+        // consider only the base size of the gun (without mods)
+        int tmpvol = get_var( "volume",
+                              ( type->volume - type->gun->barrel_volume ) / units::legacy_volume_factor );
+        if( tmpvol <= 3 ) {
+            // intentional NOP
+        } else if( tmpvol <= 5 ) {
+            delta_volume = 250_ml;
+        } else if( tmpvol <= 6 ) {
+            delta_volume = 500_ml;
+        } else if( tmpvol <= 9 ) {
+            delta_volume = 750_ml;
+        } else if( tmpvol <= 12 ) {
+            delta_volume = 1000_ml;
+        } else if( tmpvol <= 15 ) {
+            delta_volume = 1250_ml;
+        } else {
+            delta_volume = 1500_ml;
+        }
+    }
+
+    return delta_volume;
+}
+
 units::volume item::corpse_volume( const mtype *corpse ) const
 {
     units::volume corpse_volume = corpse->volume;
@@ -5167,31 +5196,12 @@ units::volume item::volume( bool integral ) const
 
     ret += contents.item_size_modifier();
 
+    // TODO: do a check if the item is collapsed or not
+    ret -= collapsed_volume_delta();
+
     if( is_gun() ) {
         for( const item *elem : gunmods() ) {
             ret += elem->volume( true );
-        }
-
-        // TODO: implement stock_length property for guns
-        if( has_flag( flag_COLLAPSIBLE_STOCK ) ) {
-            // consider only the base size of the gun (without mods)
-            int tmpvol = get_var( "volume",
-                                  ( type->volume - type->gun->barrel_volume ) / units::legacy_volume_factor );
-            if( tmpvol <= 3 ) {
-                // intentional NOP
-            } else if( tmpvol <= 5 ) {
-                ret -= 250_ml;
-            } else if( tmpvol <= 6 ) {
-                ret -= 500_ml;
-            } else if( tmpvol <= 9 ) {
-                ret -= 750_ml;
-            } else if( tmpvol <= 12 ) {
-                ret -= 1000_ml;
-            } else if( tmpvol <= 15 ) {
-                ret -= 1250_ml;
-            } else {
-                ret -= 1500_ml;
-            }
         }
 
         if( gunmod_find( itype_barrel_small ) ) {
@@ -5332,6 +5342,16 @@ void item::unset_flags()
 bool item::has_fault( const fault_id &fault ) const
 {
     return faults.count( fault );
+}
+
+bool item::has_fault_flag( const std::string &searched_flag ) const
+{
+    for( const fault_id &fault : faults ) {
+        if( fault->has_flag( searched_flag ) ) {
+            return true;
+        }
+    }
+    return false;
 }
 
 bool item::has_flag( const std::string &f ) const
@@ -6923,6 +6943,19 @@ bool item::is_reloadable_helper( const itype_id &ammo, bool now ) const
         return true;
     }
 
+    if( is_watertight_container() && !contents.empty() ) {
+        if( contents.num_item_stacks() != 1 ) {
+            return false;
+        } else if( contents.only_item().typeId() == ammo ) {
+            return true;
+        }
+    }
+
+    if( is_watertight_container() && contents.empty() &&
+        ammo.obj().phase == phase_id::LIQUID ) {
+        return true;
+    }
+
     if( magazine_integral() ) {
         if( ammo_data() ) {
             if( ammo_current() != ammo ) {
@@ -8044,7 +8077,12 @@ void item::reload_option::qty( int val )
     }
 
     bool ammo_by_charges = ammo_obj.is_ammo() || ammo_in_liquid_container;
-    int available_ammo = ammo_by_charges ? ammo_obj.charges : ammo_obj.ammo_remaining();
+    int available_ammo;
+    if( ammo->has_flag( flag_SPEEDLOADER ) ) {
+        available_ammo = ammo_obj.ammo_remaining();
+    } else {
+        available_ammo = ammo_by_charges ? ammo_obj.charges : ammo_obj.count();
+    }
     // constrain by available ammo, target capacity and other external factors (max_qty)
     // @ref max_qty is currently set when reloading ammo belts and limits to available linkages
     qty_ = std::min( { val, available_ammo, remaining_capacity, max_qty } );
@@ -8158,6 +8196,10 @@ bool item::reload( Character &u, item_location ammo, int qty )
         }
         item contents( ammo->type );
         fill_with( contents, qty );
+        if( ammo.has_parent() ) {
+            ammo.parent_item()->contained_where( *ammo.get_item() )->on_contents_changed();
+        }
+        ammo->charges -= qty;
     } else {
         // if we already have a magazine loaded prompt to eject it
         if( magazine_current() ) {
@@ -10045,6 +10087,15 @@ bool item::is_reloadable() const
 
     } else if( is_magazine() || contents.has_pocket_type( item_pocket::pocket_type::MAGAZINE_WELL ) ) {
         return true;
+
+    } else if( !is_container_full() && is_watertight_container() ) {
+        if( is_container_empty() ) {
+            return true;
+        }
+        if( contents.num_item_stacks() == 1 &&
+            contents.only_item().made_of_from_type( phase_id::LIQUID ) ) {
+            return true;
+        }
     }
 
     return false;
