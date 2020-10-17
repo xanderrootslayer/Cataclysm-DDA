@@ -274,7 +274,7 @@ class map
             }
         }
 
-        void set_seen_cache_dirty( const tripoint change_location ) {
+        void set_seen_cache_dirty( const tripoint &change_location ) {
             if( inbounds( change_location ) ) {
                 level_cache &cache = get_cache( change_location.z );
                 if( cache.seen_cache_dirty ) {
@@ -1088,11 +1088,11 @@ class map
         void spawn_item( const tripoint &p, const itype_id &type_id,
                          unsigned quantity = 1, int charges = 0,
                          const time_point &birthday = calendar::start_of_cataclysm, int damlevel = 0,
-                         const std::set<std::string> &flags = {} );
+                         const std::set<flag_id> &flags = {} );
         void spawn_item( const point &p, const itype_id &type_id,
                          unsigned quantity = 1, int charges = 0,
                          const time_point &birthday = calendar::start_of_cataclysm, int damlevel = 0,
-                         const std::set<std::string> &flags = {} ) {
+                         const std::set<flag_id> &flags = {} ) {
             spawn_item( tripoint( p, abs_sub.z ), type_id, quantity, charges, birthday, damlevel, flags );
         }
 
@@ -1101,13 +1101,13 @@ class map
         void spawn_item( const tripoint &p, const std::string &type_id,
                          unsigned quantity = 1, int charges = 0,
                          const time_point &birthday = calendar::start_of_cataclysm, int damlevel = 0,
-                         const std::set<std::string> &flags = {} ) {
+                         const std::set<flag_id> &flags = {} ) {
             spawn_item( p, itype_id( type_id ), quantity, charges, birthday, damlevel, flags );
         }
         void spawn_item( const point &p, const std::string &type_id,
                          unsigned quantity = 1, int charges = 0,
                          const time_point &birthday = calendar::start_of_cataclysm, int damlevel = 0,
-                         const std::set<std::string> &flags = {} ) {
+                         const std::set<flag_id> &flags = {} ) {
             spawn_item( tripoint( p, abs_sub.z ), type_id, quantity, charges, birthday, damlevel, flags );
         }
         units::volume max_volume( const tripoint &p );

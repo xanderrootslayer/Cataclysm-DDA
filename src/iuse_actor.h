@@ -600,7 +600,7 @@ class fireweapon_off_actor : public iuse_actor
         translation failure_message = to_translation( "hsss" ); // Due to bad roll
         int noise = 0; // If > 0 success message is a success sound instead
         int moves = 0;
-        // Lower is better: rng(0, 10) - item.damage_level( 4 ) > this variable
+        // Lower is better: rng(0, 10) - item.damage_level() > this variable
         int success_chance = INT_MIN;
 
         fireweapon_off_actor() : iuse_actor( "fireweapon_off" ) {}
@@ -905,7 +905,7 @@ class heal_actor : public iuse_actor
         itype_id used_up_item_id;
         int used_up_item_quantity = 1;
         int used_up_item_charges = 1;
-        std::set<std::string> used_up_item_flags;
+        std::set<flag_str_id> used_up_item_flags;
 
         /** How much hp would `healer` heal using this actor on `healed` body part. */
         int get_heal_value( const Character &healer, bodypart_id healed ) const;

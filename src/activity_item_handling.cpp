@@ -506,7 +506,7 @@ void activity_handlers::washing_finish( player_activity *act, player *p )
 
     for( const act_item &ait : items ) {
         item *filthy_item = const_cast<item *>( &*ait.loc );
-        filthy_item->item_tags.erase( "FILTHY" );
+        filthy_item->unset_flag( "FILTHY" );
         p->on_worn_item_washed( *filthy_item );
     }
 
@@ -823,7 +823,7 @@ static activity_reason_info find_base_construction(
     used.insert( idx );
     cata::optional<do_activity_reason> reason;
     construction_id pre_req_idx( -1 );
-    //first step: try only constructions with the same description
+    //first step: try only constructions with the same group
     //second step: try all constructions
     for( int try_num = 0; try_num < 2; ++try_num ) {
         for( const construction &pre_build : list_constructions ) {
@@ -840,9 +840,9 @@ static activity_reason_info find_base_construction(
                 pre_build.post_terrain != build.post_terrain ) {
                 continue;
             }
-            //at first step, try to get building with the same description
+            //at first step, try to get building with the same group
             if( try_num == 0 &&
-                pre_build.description != build.description ) {
+                pre_build.group != build.group ) {
                 continue;
             }
             activity_reason_info act_info_pre = find_base_construction( list_constructions,
@@ -970,11 +970,11 @@ static bool are_requirements_nearby( const std::vector<tripoint> &loot_spots,
                 if( weldpart ) {
                     item welder( itype_welder, 0 );
                     welder.charges = veh.fuel_left( itype_battery, true );
-                    welder.item_tags.insert( "PSEUDO" );
+                    welder.set_flag( "PSEUDO" );
                     temp_inv.add_item( welder );
                     item soldering_iron( itype_soldering_iron, 0 );
                     soldering_iron.charges = veh.fuel_left( itype_battery, true );
-                    soldering_iron.item_tags.insert( "PSEUDO" );
+                    soldering_iron.set_flag( "PSEUDO" );
                     temp_inv.add_item( soldering_iron );
                 }
             }
@@ -2142,8 +2142,8 @@ static bool mine_activity( player &p, const tripoint &src_loc )
         // We're breaking up some flat surface like pavement, which is much easier
         moves /= 2;
     }
-    p.assign_activity( powered ? ACT_JACKHAMMER : ACT_PICKAXE, moves, -1,
-                       p.get_item_position( chosen_item ) );
+    p.assign_activity( powered ? ACT_JACKHAMMER : ACT_PICKAXE, moves );
+    p.activity.targets.push_back( item_location( p, chosen_item ) );
     p.activity.placement = here.getabs( src_loc );
     return true;
 
@@ -2874,7 +2874,7 @@ int get_auto_consume_moves( player &p, const bool food )
                 // not good eatings.
                 continue;
             }
-            if( !p.can_consume( it ) ) {
+            if( !p.can_consume( comest ) ) {
                 continue;
             }
             if( food && p.compute_effective_nutrients( comest ).kcal < 50 ) {

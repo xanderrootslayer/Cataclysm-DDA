@@ -751,9 +751,11 @@ void editmap::update_view_with_help( const std::string &txt, const std::string &
     map::apparent_light_info al = map::apparent_light_helper( map_cache, target );
     int apparent_light = static_cast<int>(
                              here.apparent_light_at( target, here.get_visibility_variables_cache() ) );
-    mvwprintw( w_info, point( 1, off++ ), _( "outside: %d obstructed: %d" ),
+    mvwprintw( w_info, point( 1, off++ ), _( "outside: %d obstructed: %d floor: %d" ),
                static_cast<int>( here.is_outside( target ) ),
-               static_cast<int>( al.obstructed ) );
+               static_cast<int>( al.obstructed ),
+               static_cast<int>( here.has_floor( target ) )
+             );
     mvwprintw( w_info, point( 1, off++ ), _( "light_at: %s" ),
                map_cache.lm[target.x][target.y].to_string() );
     mvwprintw( w_info, point( 1, off++ ), _( "apparent light: %.5f (%d)" ),
@@ -1375,6 +1377,7 @@ void editmap::edit_fld()
  */
 enum editmap_imenu_ent {
     imenu_bday, imenu_damage, imenu_burnt,
+    imenu_tags,
     imenu_sep,
     imenu_savetest,
     imenu_exit,
@@ -1435,6 +1438,11 @@ void editmap::edit_itm()
                             "damage: %d" ), it.damage() );
             imenu.addentry( imenu_burnt, true, -1, pgettext( "item manipulation debug menu entry",
                             "burnt: %d" ), static_cast<int>( it.burnt ) );
+            imenu.addentry( imenu_tags, true, -1, pgettext( "item manipulation debug menu entry",
+                            "tags: %s" ), debug_menu::iterable_to_string( it.get_flags(), " ",
+            []( const flag_id & f ) {
+                return f.id().str();
+            } ) );
             imenu.addentry( imenu_sep, false, 0, pgettext( "item manipulation debug menu entry",
                             "-[ light emission ]-" ) );
             imenu.addentry( imenu_savetest, true, -1, pgettext( "item manipulation debug menu entry",
@@ -1451,6 +1459,7 @@ void editmap::edit_itm()
                 imenu.query();
                 if( imenu.ret >= 0 && imenu.ret < imenu_savetest ) {
                     int intval = -1;
+                    std::string strval;
                     switch( imenu.ret ) {
                         case imenu_bday:
                             intval = to_turn<int>( it.birthday() );
@@ -1461,13 +1470,28 @@ void editmap::edit_itm()
                         case imenu_burnt:
                             intval = static_cast<int>( it.burnt );
                             break;
+                        case imenu_tags:
+                            strval = debug_menu::iterable_to_string( it.get_flags(), " ",
+                            []( const flag_id & f ) {
+                                return f.id().str();
+                            } );
+                            break;
                     }
                     string_input_popup popup;
-                    int retval = popup
+                    int retval = 0;
+                    if( imenu.ret < imenu_tags ) {
+                        retval = popup
                                  .title( "set:" )
                                  .width( 20 )
                                  .text( to_string( intval ) )
                                  .query_int();
+                    } else if( imenu.ret == imenu_tags ) {
+                        strval = popup
+                                 .title( _( "Flags:" ) )
+                                 .description( "UPPERCASE, no quotes, separate with spaces:" )
+                                 .text( strval )
+                                 .query_string();
+                    }
                     if( popup.confirmed() ) {
                         switch( imenu.ret ) {
                             case imenu_bday:
@@ -1481,6 +1505,17 @@ void editmap::edit_itm()
                             case imenu_burnt:
                                 it.burnt = retval;
                                 imenu.entries[imenu_burnt].txt = string_format( "burnt: %d", it.burnt );
+                                break;
+                            case imenu_tags:
+                                const auto tags = debug_menu::string_to_iterable<std::vector<std::string>>( strval, " " );
+                                it.unset_flags();
+                                for( const auto &t : tags ) {
+                                    it.set_flag( t );
+                                }
+                                imenu.entries[imenu_tags].txt = debug_menu::iterable_to_string(
+                                it.get_flags(), " ", []( const flag_id & f ) {
+                                    return f.id().str();
+                                } );
                                 break;
                         }
                     }
