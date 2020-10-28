@@ -251,7 +251,8 @@ const recipe *select_crafting_recipe( int &batch_size )
             const requirement_data &simple_req = r->simple_requirements();
             apparently_craftable = simple_req.can_make_with_inventory(
                                        inv, all_items_filter, batch_size, craft_flags::start_only );
-            proficiency_maluses = r->proficiency_maluses( player );
+            proficiency_time_maluses = r->proficiency_time_maluses( player );
+            proficiency_failure_maluses = r->proficiency_failure_maluses( player );
             has_all_skills = r->skill_used.is_null() ||
                              player.get_skill_level( r->skill_used ) >= r->difficulty;
             for( const std::pair<const skill_id, int> &e : r->required_skills ) {
@@ -266,7 +267,8 @@ const recipe *select_crafting_recipe( int &batch_size )
         bool apparently_craftable;
         bool has_proficiencies;
         bool has_all_skills;
-        float proficiency_maluses;
+        float proficiency_time_maluses;
+        float proficiency_failure_maluses;
 
         nc_color selected_color() const {
             if( !can_craft ) {
@@ -311,8 +313,10 @@ const recipe *select_crafting_recipe( int &batch_size )
     ctxt.register_action( "QUIT" );
     ctxt.register_action( "CONFIRM" );
     ctxt.register_action( "CYCLE_MODE" );
-    ctxt.register_action( "SCROLL_UP" );
-    ctxt.register_action( "SCROLL_DOWN" );
+    ctxt.register_action( "PAGE_UP" );
+    ctxt.register_action( "PAGE_DOWN" );
+    ctxt.register_action( "SCROLL_ITEM_INFO_UP" );
+    ctxt.register_action( "SCROLL_ITEM_INFO_DOWN" );
     ctxt.register_action( "PREV_TAB" );
     ctxt.register_action( "NEXT_TAB" );
     ctxt.register_action( "FILTER" );
@@ -526,8 +530,16 @@ const recipe *select_crafting_recipe( int &batch_size )
                 ypos += fold_and_print( w_data, point( xpos, ypos ), pane, col, _( "Proficiencies Required: %s" ),
                                         current[line]->required_proficiencies_string( &get_player_character() ) );
 
-                ypos += fold_and_print( w_data, point( xpos, ypos ), pane, col, _( "Proficiencies Used: %s" ),
-                                        current[line]->used_proficiencies_string( &get_player_character() ) );
+                std::string used_profs = current[line]->used_proficiencies_string( &get_player_character() );
+                if( !used_profs.empty() ) {
+                    ypos += fold_and_print( w_data, point( xpos, ypos ), pane, col, _( "Proficiencies Used: %s" ),
+                                            used_profs );
+                }
+                std::string missing_profs = current[line]->missing_proficiencies_string( &get_player_character() );
+                if( !missing_profs.empty() ) {
+                    ypos += fold_and_print( w_data, point( xpos, ypos ), pane, col, _( "Proficiencies Missing: %s" ),
+                                            missing_profs );
+                }
 
                 const int expected_turns = player_character.expected_time_to_craft( *current[line],
                                            count ) / to_moves<int>( 1_turns );
@@ -585,10 +597,12 @@ const recipe *select_crafting_recipe( int &batch_size )
                                 _( "<color_red>Cannot be crafted because the same item is needed "
                                    "for multiple components</color>" ) );
                 }
-                float maluses = available[line].proficiency_maluses;
-                if( maluses != 1.0 ) {
-                    std::string msg = string_format( _( "<color_yellow>This recipe will take %g%% of the normal time "
-                                                        "because you lack some of the proficiencies used." ), maluses * 100 );
+                float time_maluses = available[line].proficiency_time_maluses;
+                float fail_maluses = available[line].proficiency_failure_maluses;
+                if( time_maluses != 1.0 || fail_maluses != 1.0 ) {
+                    std::string msg = string_format( _( "<color_yellow>This recipe will take %.1fx as long as normal, "
+                                                        "and be %.1fx more likely to incur failures, because you "
+                                                        "lack some of the proficiencies used." ), time_maluses, fail_maluses );
                     ypos += fold_and_print( w_data, point( xpos, ypos ), pane, col, msg );
                 }
                 if( !can_craft_this && !available[line].has_proficiencies ) {
@@ -822,6 +836,7 @@ const recipe *select_crafting_recipe( int &batch_size )
         ui_manager::redraw();
         const int scroll_item_info_lines = catacurses::getmaxy( w_iteminfo ) - 4;
         const std::string action = ctxt.handle_input();
+        int recmax = current.size();
         if( action == "CYCLE_MODE" ) {
             display_mode = display_mode + 1;
             if( display_mode <= 0 ) {
@@ -834,9 +849,9 @@ const recipe *select_crafting_recipe( int &batch_size )
             } while( subtab.cur() != start && available_recipes.empty_category( tab.cur(),
                      subtab.cur() != "CSC_ALL" ? subtab.cur() : "" ) );
             recalc = true;
-        } else if( action == "SCROLL_UP" ) {
+        } else if( action == "SCROLL_ITEM_INFO_UP" ) {
             item_info_scroll -= scroll_item_info_lines;
-        } else if( action == "SCROLL_DOWN" ) {
+        } else if( action == "SCROLL_ITEM_INFO_DOWN" ) {
             item_info_scroll += scroll_item_info_lines;
         } else if( action == "PREV_TAB" ) {
             tab.prev();
@@ -859,6 +874,22 @@ const recipe *select_crafting_recipe( int &batch_size )
             line++;
         } else if( action == "UP" ) {
             line--;
+        } else if( action == "PAGE_DOWN" ) {
+            if( line == recmax - 1 ) {
+                line = 0;
+            } else if( line + 4 >= recmax ) {
+                line = recmax - 1;
+            } else {
+                line += +4;
+            }
+        } else if( action == "PAGE_UP" ) {
+            if( line == 0 ) {
+                line = recmax - 1;
+            } else if( line <= 3 ) {
+                line = 0;
+            } else {
+                line += -4;
+            }
         } else if( action == "CONFIRM" ) {
             if( available.empty() || !available[line].can_craft ) {
                 popup( _( "You can't do that!  Press [<color_yellow>ESC</color>]!" ) );
