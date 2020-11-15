@@ -945,6 +945,9 @@ bool item::stacks_with( const item &rhs, bool check_components, bool combine_liq
     if( type != rhs.type ) {
         return false;
     }
+    if( is_relic() ) {
+        return false;
+    }
     if( charges != 0 && rhs.charges != 0 && is_money() ) {
         // Dealing with nonempty cash cards
         return true;
@@ -3772,7 +3775,7 @@ void item::final_info( std::vector<iteminfo> &info, const iteminfo_query *parts,
                         std::back_inserter( flags ) );
 
         // ...and display those which have an info description
-        for( const flag_id &e : flags ) {
+        for( const flag_id &e : sorted_lex( flags ) ) {
             const json_flag &f = e.obj();
             if( !f.info().empty() ) {
                 info.emplace_back( "DESCRIPTION", string_format( "* %s", f.info() ) );
@@ -7033,6 +7036,11 @@ bool item::has_relic_recharge() const
     return is_relic() && relic_data->has_recharge();
 }
 
+bool item::has_relic_activation() const
+{
+    return is_relic() && relic_data->has_activation();
+}
+
 std::vector<enchantment> item::get_enchantments() const
 {
     if( !is_relic() ) {
@@ -7077,6 +7085,16 @@ double item::calculate_by_enchantment_wield( double modify, enchant_vals::mod va
         modify = std::round( modify );
     }
     return modify;
+}
+
+units::length item::max_containable_length() const
+{
+    return contents.max_containable_length();
+}
+
+units::volume item::max_containable_volume() const
+{
+    return contents.max_containable_volume();
 }
 
 bool item::can_contain( const item &it ) const

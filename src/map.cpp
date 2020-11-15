@@ -5040,18 +5040,16 @@ static void use_charges_from_furn( const furn_t &f, const itype_id &type, int &q
             return i.typeId() == ammo;
         } );
         if( iter != stack.end() ) {
-            item furn_item( itt, -1, iter->charges );
+            item furn_item( itt, calendar::turn_zero );
+            furn_item.ammo_set( ammo, iter->charges );
+
             if( !filter( furn_item ) ) {
                 return;
             }
-            // The const itemructor limits the charges to the (type specific) maximum.
-            // Setting it separately circumvents that it is synchronized with the code that creates
-            // the pseudo item (and fills its charges) in inventory.cpp
-            furn_item.charges = iter->charges;
             if( furn_item.use_charges( type, quantity, ret, p ) ) {
                 stack.erase( iter );
             } else {
-                iter->charges = furn_item.charges;
+                iter->charges = furn_item.ammo_remaining();
             }
         }
     }
@@ -8308,9 +8306,9 @@ void map::add_corpse( const tripoint &p )
         body.set_flag( flag_REVIVE_SPECIAL );
     }
 
-    put_items_from_loc( item_group_id( "default_zombie_clothes" ), p, 0 );
+    put_items_from_loc( item_group_id( "default_zombie_clothes" ), p, calendar::turn_zero );
     if( one_in( 3 ) ) {
-        put_items_from_loc( item_group_id( "default_zombie_items" ), p, 0 );
+        put_items_from_loc( item_group_id( "default_zombie_items" ), p, calendar::turn_zero );
     }
 
     add_item_or_charges( p, body );
