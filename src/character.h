@@ -263,12 +263,6 @@ enum edible_rating {
     NO_TOOL
 };
 
-enum class rechargeable_cbm : int {
-    none = 0,
-    reactor,
-    other
-};
-
 struct aim_type {
     std::string name;
     std::string action;
@@ -769,6 +763,9 @@ class Character : public Creature, public visitable<Character>
                                  bool crit, bool dodge_counter, bool block_counter );
         void perform_technique( const ma_technique &technique, Creature &t, damage_instance &di,
                                 int &move_cost );
+
+        // modifies the damage dealt based on the character's enchantments
+        damage_instance modify_damage_dealt_with_enchantments( const damage_instance &dam ) const override;
         /**
          * Sets up a melee attack and handles melee attack function calls
          * @param t Creature to attack
@@ -779,6 +776,10 @@ class Character : public Creature, public visitable<Character>
          */
         void melee_attack( Creature &t, bool allow_special, const matec_id &force_technique,
                            bool allow_unarmed = true );
+
+        /** Handles reach melee attacks */
+        void reach_attack( const tripoint &p );
+
         /**
          * Calls the to other melee_attack function with an empty technique id (meaning no specific
          * technique should be used).
@@ -1646,6 +1647,10 @@ class Character : public Creature, public visitable<Character>
 
         /** Note that we've read a book at least once. **/
         virtual bool has_identified( const itype_id &item_id ) const = 0;
+        virtual void identify( const item &item ) = 0;
+        /** Calculates the total fun bonus relative to this character's traits and chapter progress */
+        bool fun_to_read( const item &book ) const;
+        int book_fun_for( const item &book, const Character &p ) const;
 
         bool can_pickVolume( const item &it, bool safe = false ) const;
         bool can_pickWeight( const item &it, bool safe = true ) const;
@@ -1915,8 +1920,6 @@ class Character : public Creature, public visitable<Character>
         std::list<consumption_event> consumption_history;
 
         int oxygen = 0;
-        int tank_plut = 0;
-        int reactor_plut = 0;
         int slow_rad = 0;
         blood_type my_blood_type;
         bool blood_rh_factor = false;
@@ -2267,17 +2270,12 @@ class Character : public Creature, public visitable<Character>
          */
         ret_val<edible_rating> will_eat( const item &food, bool interactive = false ) const;
         /** Determine character's capability of recharging their CBMs. */
-        bool can_feed_reactor_with( const item &it ) const;
-        rechargeable_cbm get_cbm_rechargeable_with( const item &it ) const;
-        int get_acquirable_energy( const item &it, rechargeable_cbm cbm ) const;
         int get_acquirable_energy( const item &it ) const;
 
         /**
         * Recharge CBMs whenever possible.
         * @return true when recharging was successful.
         */
-        bool feed_reactor_with( item &it );
-        /** @return true if successful and was not a magazine. */
         bool fuel_bionic_with( item &it );
         /** Used to apply stimulation modifications from food and medication **/
         void modify_stimulation( const islot_comestible &comest );
@@ -2304,7 +2302,6 @@ class Character : public Creature, public visitable<Character>
         bool can_estimate_rot() const;
         /** Check whether character can consume this very item */
         bool can_consume_as_is( const item &it ) const;
-        bool can_consume_for_bionic( const item &it ) const;
         /**
          * Returns a reference to the item itself (if it's consumable),
          * the first of its contents (if it's consumable) or null item otherwise.
@@ -2347,7 +2344,7 @@ class Character : public Creature, public visitable<Character>
         bool change_side( item &it, bool interactive = true );
         bool change_side( item_location &loc, bool interactive = true );
 
-        bool get_check_encumbrance() {
+        bool get_check_encumbrance() const {
             return check_encumbrance;
         }
         void set_check_encumbrance( bool new_check ) {
