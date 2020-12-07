@@ -158,6 +158,7 @@ static const std::unordered_map<std::string, ter_bitflags> ter_bitflags_map = { 
         { "NO_SIGHT",                 TFLAG_NO_SIGHT },       // Sight reduced to 1 on this tile
         { "FLAMMABLE_ASH",            TFLAG_FLAMMABLE_ASH },  // oh hey fire. again.
         { "WALL",                     TFLAG_WALL },           // connects to other walls
+        { "NO_SHOOT",                 TFLAG_NO_SHOOT },       // terrain cannot be damaged by ranged attacks
         { "NO_SCENT",                 TFLAG_NO_SCENT },       // cannot have scent values, which prevents scent diffusion through this tile
         { "DEEP_WATER",               TFLAG_DEEP_WATER },     // Deep enough to submerge things
         { "SHALLOW_WATER",            TFLAG_SHALLOW_WATER },  // Water, but not deep enough to submerge the player
@@ -1182,6 +1183,7 @@ void ter_t::load( const JsonObject &jo, const std::string &src )
     optional( jo, was_loaded, "coverage", coverage );
     assign( jo, "max_volume", max_volume, src == "dda" );
     optional( jo, was_loaded, "trap", trap_id_str );
+    optional( jo, was_loaded, "heat_radiation", heat_radiation );
 
     optional( jo, was_loaded, "light_emitted", light_emitted );
 

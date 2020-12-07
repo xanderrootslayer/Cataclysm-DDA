@@ -64,6 +64,7 @@
 #include "enums.h"
 #include "event.h"
 #include "event_bus.h"
+#include "explosion.h"
 #include "faction.h"
 #include "field.h"
 #include "field_type.h"
@@ -1573,6 +1574,7 @@ bool game::do_turn()
     m.vehmove();
     m.process_fields();
     m.process_items();
+    explosion_handler::process_explosions();
     m.creature_in_field( u );
 
     // Apply sounds from previous turn to monster and NPC AI.
@@ -1832,8 +1834,8 @@ int get_heat_radiation( const tripoint &location, bool direct )
         int ffire = maptile_field_intensity( mt, fd_fire );
         if( ffire > 0 ) {
             heat_intensity = ffire;
-        } else if( here.tr_at( dest ) == tr_lava ) {
-            heat_intensity = 3;
+        } else  {
+            heat_intensity = here.ter( dest )->heat_radiation;
         }
         if( heat_intensity == 0 ) {
             // No heat source here
@@ -10133,10 +10135,11 @@ void game::place_player_overmap( const tripoint_abs_omt &om_dest )
     }
     const int minz = m.has_zlevels() ? -OVERMAP_DEPTH : m.get_abs_sub().z;
     const int maxz = m.has_zlevels() ? OVERMAP_HEIGHT : m.get_abs_sub().z;
+    m.clear_all_vehicle_caches( m.get_abs_sub().z );
     for( int z = minz; z <= maxz; z++ ) {
-        m.clear_vehicle_cache( z );
         m.clear_vehicle_list( z );
     }
+    m.build_all_vehicle_caches( m.get_abs_sub().z );
     m.access_cache( m.get_abs_sub().z ).map_memory_seen_cache.reset();
     // offset because load_map expects the coordinates of the top left corner, but the
     // player will be centered in the middle of the map.
@@ -11256,7 +11259,7 @@ void game::vertical_shift( const int z_after )
     const tripoint abs_sub = m.get_abs_sub();
     const int z_before = abs_sub.z;
     if( !m.has_zlevels() ) {
-        m.clear_vehicle_cache( z_before );
+        m.clear_all_vehicle_caches( z_before );
         m.access_cache( z_before ).vehicle_list.clear();
         m.access_cache( z_before ).zone_vehicles.clear();
         m.access_cache( z_before ).map_memory_seen_cache.reset();
@@ -11266,6 +11269,7 @@ void game::vertical_shift( const int z_after )
         m.load( tripoint_abs_sm( point_abs_sm( abs_sub.xy() ), z_after ), true );
         shift_monsters( tripoint( 0, 0, z_after - z_before ) );
         reload_npcs();
+        m.build_all_vehicle_caches( z_after );
     } else {
         // Shift the map itself
         m.vertical_shift( z_after );
@@ -12047,31 +12051,14 @@ void game::autosave()
 
 void game::start_calendar()
 {
-    const bool scen_season = scen->has_flag( "SPR_START" ) || scen->has_flag( "SUM_START" ) ||
-                             scen->has_flag( "AUT_START" ) || scen->has_flag( "WIN_START" ) ||
-                             scen->has_flag( "SUM_ADV_START" );
-
-    if( scen_season ) {
+    if( scen->custom_initial_date() ) {
         // Configured starting date overridden by scenario, calendar::start is left as Spring 1
-        calendar::start_of_cataclysm = calendar::turn_zero + 1_hours * get_option<int>( "INITIAL_TIME" );
-        calendar::start_of_game = calendar::turn_zero + 1_hours * get_option<int>( "INITIAL_TIME" );
-        if( scen->has_flag( "SPR_START" ) ) {
-            calendar::initial_season = SPRING;
-        } else if( scen->has_flag( "SUM_START" ) ) {
-            calendar::initial_season = SUMMER;
-            calendar::start_of_game += calendar::season_length();
-        } else if( scen->has_flag( "AUT_START" ) ) {
-            calendar::initial_season = AUTUMN;
-            calendar::start_of_game += calendar::season_length() * 2;
-        } else if( scen->has_flag( "WIN_START" ) ) {
-            calendar::initial_season = WINTER;
-            calendar::start_of_game += calendar::season_length() * 3;
-        } else if( scen->has_flag( "SUM_ADV_START" ) ) {
-            calendar::initial_season = SUMMER;
-            calendar::start_of_game += calendar::season_length() * 5;
-        } else {
-            debugmsg( "The Unicorn" );
-        }
+        calendar::start_of_cataclysm = calendar::turn_zero + 1_hours * scen->initial_hour();
+        calendar::start_of_game = calendar::turn_zero + 1_hours * scen->initial_hour();
+        calendar::initial_season = scen->initial_season();
+        calendar::start_of_game += calendar::season_length() * (
+                                       static_cast<int>( scen->initial_season() ) +
+                                       static_cast<int>( season_type::NUM_SEASONS ) * scen->initial_year() );
     } else {
         // No scenario, so use the starting date+time configured in world options
         int initial_days = get_option<int>( "INITIAL_DAY" );

@@ -73,7 +73,7 @@
 
 ## Notes
 
-- Some flags (items, effects, vehicle parts) have to be defined in `flags.json` or `vp_flags.json` (with type: `json_flag`) to work correctly. 
+- Some flags (items, effects, vehicle parts) have to be defined in `flags.json` or `vp_flags.json` (with type: `json_flag`) to work correctly.
 - Many of the flags intended for one category or item type, can be used in other categories or item types. Experiment to see where else flags can be used.
 - Offensive and defensive flags can be used on any item type that can be wielded.
 
@@ -565,6 +565,7 @@ List of known flags, used in both `terrain.json` and `furniture.json`.
 - ```NO_FLOOR``` Things should fall when placed on this tile
 - ```NO_SIGHT``` Creature on this tile have their sight reduced to one tile
 - ```NO_SCENT``` This tile cannot have scent values, which prevents scent diffusion through this tile
+- ```NO_SHOOT``` Terrain with this flag cannot be damaged by ranged attacks, and ranged attacks will not pass through it.
 - ```OPENCLOSE_INSIDE``` If it's a door (with an 'open' or 'close' field), it can only be opened or closed if you're inside.
 - ```PAINFUL``` May cause a small amount of pain.
 - ```PERMEABLE``` Permeable for gases.
@@ -587,7 +588,7 @@ List of known flags, used in both `terrain.json` and `furniture.json`.
 - ```SHORT``` Feature too short to collide with vehicle protrusions. (mirrors, blades).
 - ```SIGN``` Show written message on examine.
 - ```SMALL_PASSAGE``` This terrain or furniture is too small for large or huge creatures to pass through.
-- ```SUN_ROOF_ABOVE``` This furniture (terrain is not supported currently) has a "fake roof" above, that blocks sunlight. Special hack for #44421, to be removed later. 
+- ```SUN_ROOF_ABOVE``` This furniture (terrain is not supported currently) has a "fake roof" above, that blocks sunlight. Special hack for #44421, to be removed later.
 - ```SUPPORTS_ROOF``` Used as a boundary for roof construction.
 - ```SUPPRESS_SMOKE``` Prevents smoke from fires; used by ventilated wood stoves, etc.
 - ```SWIMMABLE``` Player and monsters can swim through it.
@@ -1232,9 +1233,7 @@ These branches are also the valid entries for the categories of `dreams` in `dre
 
 ### Flags
 
-- ```ALLOW_OUTSIDE``` Allows placing player outside of building, useful for outdoor start.
 - ```BAD_DAY``` Player starts the game drunk, depressed and sick with the flu.
-- ```BOARDED``` Start in boarded building (windows and doors are boarded, movable furniture is moved to windows and doors).
 - ```CHALLENGE``` Game won't choose this scenario in random game types.
 - ```CITY_START``` Scenario is available only when city size value in world options is more than 0.
 - ```FIRE_START``` Player starts the game with fire nearby.
@@ -1242,17 +1241,16 @@ These branches are also the valid entries for the categories of `dreams` in `dre
 - ```INFECTED``` Player starts the game infected.
 - ```FUNGAL_INFECTION``` Player starts the game with fungal infection.
 - ```LONE_START``` If starting NPC spawn option is switched to "Scenario-based", this scenario won't spawn a fellow NPC on game start.
-- ```SCEN_ONLY``` Profession can be chosen only as part of the appropriate scenario.
 - ```SUR_START``` Surrounded start, zombies outside the starting location.
 
-#### Season Flags
+#### Profession Flags
 
-- ```AUT_START``` ... start in autumn.
-- ```SPR_START``` ... start in spring.
-- ```SUM_ADV_START``` ... start second summer after Cataclysm.
-- ```SUM_START``` ... start in summer.
-- ```WIN_START``` ... start in winter.
+- ```SCEN_ONLY``` Profession can be chosen only as part of the appropriate scenario.
 
+#### Starting Location Flags
+
+- ```ALLOW_OUTSIDE``` Allows placing player outside of building, useful for outdoor start.
+- ```BOARDED``` Start in boarded building (windows and doors are boarded, movable furniture is moved to windows and doors).
 
 ## Skills
 
@@ -1290,7 +1288,7 @@ Melee flags are fully compatible with tool flags, and vice versa.
 - ```FISH_POOR``` When used for fishing, it's a poor tool (requires that the matching use_action has been set).
 - ```HAS_RECIPE``` Used by the E-Ink tablet to indicates it's currently showing a recipe.
 - ```IS_UPS``` Item is Unified Power Supply. Used in active item processing
-- ```LIGHT_[X]``` Illuminates the area with light intensity `[X]` where `[X]` is an intensity value. (e.x. `LIGHT_4` or `LIGHT_100`). Note: this flags sets `itype::light_emission` field and then is removed (can't be found using `has_flag`); 
+- ```LIGHT_[X]``` Illuminates the area with light intensity `[X]` where `[X]` is an intensity value. (e.x. `LIGHT_4` or `LIGHT_100`). Note: this flags sets `itype::light_emission` field and then is removed (can't be found using `has_flag`);
 - ```MC_MOBILE```, ```MC_RANDOM_STUFF```, ```MC_SCIENCE_STUFF```, ```MC_USED```, ```MC_HAS_DATA``` Memory card related flags, see `iuse.cpp`
 - ```NO_DROP``` Item should never exist on map tile as a discrete item (must be contained by another item)
 - ```NO_UNLOAD``` Cannot be unloaded.
