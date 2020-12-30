@@ -6841,6 +6841,26 @@ Character::comfort_response_t Character::base_comfort_value( const tripoint &p )
                         comfort_response.aid = &items_it;
                         break; // prevents using more than 1 sleep aid
                     }
+                    if( items_it.has_flag( flag_SLEEP_AID_CONTAINER ) ) {
+                        bool found = false;
+                        if( items_it.contents.size() > 1 ) {
+                            // Only one item is allowed, so we don't fill our pillowcase with nails
+                            continue;
+                        }
+                        for( const item *it : items_it.contents.all_items_top() ) {
+                            if( it->has_flag( flag_SLEEP_AID ) ) {
+                                // Note: BED + SLEEP_AID = 9 pts, or 1 pt below very_comfortable
+                                comfort += 1 + static_cast<int>( comfort_level::slightly_comfortable );
+                                comfort_response.aid = &items_it;
+                                found = true;
+                                break; // prevents using more than 1 sleep aid
+                            }
+                        }
+                        // Only 1 sleep aid
+                        if( found ) {
+                            break;
+                        }
+                    }
                 }
             }
             if( board ) {
@@ -6877,6 +6897,26 @@ Character::comfort_response_t Character::base_comfort_value( const tripoint &p )
                     comfort += 1 + static_cast<int>( comfort_level::slightly_comfortable );
                     comfort_response.aid = &items_it;
                     break; // prevents using more than 1 sleep aid
+                }
+                if( items_it.has_flag( flag_SLEEP_AID_CONTAINER ) ) {
+                    bool found = false;
+                    if( items_it.contents.size() > 1 ) {
+                        // Only one item is allowed, so we don't fill our pillowcase with nails
+                        continue;
+                    }
+                    for( const item *it : items_it.contents.all_items_top() ) {
+                        if( it->has_flag( flag_SLEEP_AID ) ) {
+                            // Note: BED + SLEEP_AID = 9 pts, or 1 pt below very_comfortable
+                            comfort += 1 + static_cast<int>( comfort_level::slightly_comfortable );
+                            comfort_response.aid = &items_it;
+                            found = true;
+                            break; // prevents using more than 1 sleep aid
+                        }
+                    }
+                    // Only 1 sleep aid
+                    if( found ) {
+                        break;
+                    }
                 }
             }
         }
@@ -10943,27 +10983,37 @@ int Character::floor_bedding_warmth( const tripoint &pos )
 
 int Character::floor_item_warmth( const tripoint &pos )
 {
-    map &here = get_map();
-    if( !here.has_items( pos ) ) {
-        return 0;
-    }
-
     int item_warmth = 0;
-    // Search the floor for items
-    const map_stack floor_item = here.i_at( pos );
-    for( const item &elem : floor_item ) {
-        if( !elem.is_armor() ) {
-            continue;
-        }
-        // Items that are big enough and covers the torso are used to keep warm.
-        // Smaller items don't do as good a job
-        if( elem.volume() > 250_ml &&
-            ( elem.covers( body_part_torso ) || elem.covers( body_part_leg_l ) ||
-              elem.covers( body_part_leg_r ) ) ) {
-            item_warmth += 60 * elem.get_warmth() * elem.volume() / 2500_ml;
-        }
-    }
 
+    const auto warm = [&item_warmth]( const auto & stack ) {
+        for( const item &elem : stack ) {
+            if( !elem.is_armor() ) {
+                continue;
+            }
+            // Items that are big enough and covers the torso are used to keep warm.
+            // Smaller items don't do as good a job
+            if( elem.volume() > 250_ml &&
+                ( elem.covers( body_part_torso ) || elem.covers( body_part_leg_l ) ||
+                  elem.covers( body_part_leg_r ) ) ) {
+                item_warmth += 60 * elem.get_warmth() * elem.volume() / 2500_ml;
+            }
+        }
+    };
+
+    map &here = get_map();
+
+    if( !!here.veh_at( pos ) ) {
+        if( const cata::optional<vpart_reference> vp = here.veh_at( pos ).part_with_feature( VPFLAG_CARGO,
+                false ) ) {
+            vehicle *const veh = &vp->vehicle();
+            const int cargo = vp->part_index();
+            vehicle_stack vehicle_items = veh->get_items( cargo );
+            warm( vehicle_items );
+        }
+        return item_warmth;
+    }
+    map_stack floor_items = here.i_at( pos );
+    warm( floor_items );
     return item_warmth;
 }
 

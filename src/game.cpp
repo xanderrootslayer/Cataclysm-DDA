@@ -487,7 +487,7 @@ void check_encoding();
 void ensure_term_size();
 #endif
 
-void game::init_ui( const bool resized )
+void game_ui::init_ui()
 {
     // clear the screen
     static bool first_init = true;
@@ -511,13 +511,10 @@ void game::init_ui( const bool resized )
     TERMX = get_terminal_width();
     TERMY = get_terminal_height();
 
-    if( resized ) {
-        get_options().get_option( "TERMINAL_X" ).setValue( TERMX * get_scaling_factor() );
-        get_options().get_option( "TERMINAL_Y" ).setValue( TERMY * get_scaling_factor() );
-        get_options().save();
-    }
+    get_options().get_option( "TERMINAL_X" ).setValue( TERMX * get_scaling_factor() );
+    get_options().get_option( "TERMINAL_Y" ).setValue( TERMY * get_scaling_factor() );
+    get_options().save();
 #else
-    ( void ) resized;
     ensure_term_size();
 
     TERMY = getmaxy( catacurses::stdscr );
@@ -1790,6 +1787,7 @@ bool game::cancel_activity_query( const std::string &text )
     }
     if( query_yn( "%s %s", text, u.activity.get_stop_phrase() ) ) {
         u.cancel_activity();
+        u.clear_destination();
         u.resume_backlog_activity();
         return true;
     }
@@ -6258,8 +6256,9 @@ void game::print_terrain_info( const tripoint &lp, const catacurses::window &w_l
     // Print OMT type and terrain type on first line.
     std::string tile = m.tername( lp );
     trim_and_print( w_look, point( column, line ), max_width, c_white, area_name );
-    trim_and_print( w_look, point( column + utf8_width( area_name ) + 1, line ), max_width,
-                    c_light_gray, tile );
+    const int terrain_lines = fold_and_print( w_look, point( column + utf8_width( area_name ) + 1,
+                              line ), max_width - utf8_width( area_name ) - 1, c_light_gray, tile );
+    line += terrain_lines - 1;
 
     // Furniture on second line if any.
     if( m.has_furn( lp ) ) {
@@ -6277,7 +6276,7 @@ void game::print_terrain_info( const tripoint &lp, const catacurses::window &w_l
         mvwprintz( w_look, point( column, ++line ), c_light_gray, lines[i] );
     }
 
-    // Move cost from terrain and furntiure and vehicle parts.
+    // Move cost from terrain and furniture and vehicle parts.
     // Vehicle part information is printed in a different function.
     if( m.impassable( lp ) ) {
         mvwprintz( w_look, point( column, ++line ), c_light_red, _( "Impassable" ) );
@@ -6608,11 +6607,6 @@ void game::zones_manager()
             }
         }
         zone_cnt = static_cast<int>( zones.size() );
-        // Sort zones by name
-        std::sort( zones.begin(), zones.end(),
-        []( const zone_manager::ref_zone_data & lhs, const zone_manager::ref_zone_data & rhs ) {
-            return localized_compare( lhs.get().get_name(), rhs.get().get_name() );
-        } );
         return zones;
     };
 
@@ -12352,11 +12346,6 @@ void avatar_moves( const tripoint &old_abs_pos, const avatar &u, const map &m )
     }
 }
 } // namespace cata_event_dispatch
-
-void game_ui::init_ui()
-{
-    g->init_ui( true );
-}
 
 achievements_tracker &get_achievements()
 {

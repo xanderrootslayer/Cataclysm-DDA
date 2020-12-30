@@ -53,6 +53,7 @@
 #include "material.h"
 #include "memorial_logger.h"
 #include "messages.h"
+#include "mission.h"
 #include "mondefense.h"
 #include "monfaction.h"
 #include "monster.h"
@@ -324,6 +325,10 @@ bool mattack::eat_food( monster *z )
     for( const auto &p : here.points_in_radius( z->pos(), 1 ) ) {
         //Protect crop seeds from carnivores, give omnivores eat_crop special also
         if( here.has_flag( "PLANT", p ) ) {
+            continue;
+        }
+        // Don't snap up food RIGHT under the player's nose.
+        if( z->friendly && rl_dist( get_player_location().pos(), p ) <= 2 ) {
             continue;
         }
         map_stack items = here.i_at( p );
@@ -1468,7 +1473,7 @@ bool mattack::growplants( monster *z )
 bool mattack::grow_vine( monster *z )
 {
     if( z->friendly ) {
-        if( rl_dist( get_player_character().pos(), z->pos() ) <= 3 ) {
+        if( rl_dist( get_player_location().pos(), z->pos() ) <= 3 ) {
             // Friendly vines keep the area around you free, so you can move.
             return false;
         }
@@ -1635,10 +1640,7 @@ bool mattack::fungus( monster *z )
     // TODO: Infect NPCs?
     // It takes a while
     z->moves -= 200;
-    Character &player_character = get_player_character();
-    if( player_character.has_trait( trait_THRESH_MYCUS ) ) {
-        z->friendly = 100;
-    }
+
     //~ the sound of a fungus releasing spores
     sounds::sound( z->pos(), 10, sounds::sound_t::combat, _( "Pouf!" ), false, "misc", "puff" );
     add_msg_if_player_sees( *z, m_warning, _( "Spores are released from the %s!" ), z->name() );
@@ -2369,7 +2371,7 @@ bool mattack::callblobs( monster *z )
     // if we want to deal with NPCS and friendly monsters as well.
     // The strategy is to send about 1/3 of the available blobs after the player,
     // and keep the rest near the brain blob for protection.
-    tripoint enemy = get_player_character().pos();
+    tripoint enemy = get_player_location().pos();
     std::list<monster *> allies;
     std::vector<tripoint> nearby_points = closest_points_first( z->pos(), 3 );
     for( monster &candidate : g->all_monsters() ) {
@@ -5746,7 +5748,16 @@ bool mattack::zombie_fuse( monster *z )
     z->add_effect( effect_grown_of_fuse, 10_days, true,
                    critter->get_hp_max() + z->get_effect( effect_grown_of_fuse ).get_intensity() );
     z->heal( critter->get_hp(), true );
+    z->mission_fused.emplace_back( critter->name() );
+    z->mission_fused.insert( z->mission_fused.end(),
+                             critter->mission_fused.begin(), critter->mission_fused.end() );
+    if( mission::on_creature_fusion( *z, *critter ) ) {
+        // let the player know that they still need to kill the fusing monster
+        add_msg_if_player_sees( *z, _( "%1$s still seems to be moving inside %2$s…" ),
+                                critter->name(), z->name() );
+    }
     critter->death_drops = false;
+    critter->quiet_death = true;
     critter->die( z );
     return true;
 }
