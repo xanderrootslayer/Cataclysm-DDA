@@ -3082,7 +3082,7 @@ void Character::handle_contents_changed( const std::vector<item_location> &conta
             item_location parent_loc = loc.parent_item();
             item_loc_with_depth parent( parent_loc );
             item_pocket *const pocket = parent_loc->contained_where( *loc );
-            pocket->on_contents_changed();
+            pocket->unseal();
             bool exists = false;
             auto it = sorted_containers.lower_bound( parent );
             for( ; it != sorted_containers.end() && it->depth() == parent.depth(); ++it ) {
@@ -5525,7 +5525,7 @@ int Character::weary_threshold() const
     const int bmr = base_bmr();
     int threshold = bmr * get_option<float>( "WEARY_BMR_MULT" );
     // reduce by 1% per 14 points of fatigue after 150 points
-    threshold *= 1.0f - ( ( fatigue - 150 ) / 1400.0f );
+    threshold *= 1.0f - ( ( std::max( fatigue, -20 ) - 150 ) / 1400.0f );
     // Each 2 points of morale increase or decrease by 1%
     threshold *= 1.0f + ( get_morale_level() / 200.0f );
     // TODO: Hunger effects this
@@ -8710,7 +8710,7 @@ bool Character::dispose_item( item_location &&obj, const std::string &prompt )
 
     std::vector<dispose_option> opts;
 
-    const bool bucket = obj->will_spill();
+    const bool bucket = obj->will_spill() && !obj->is_container_empty();
 
     opts.emplace_back( dispose_option{
         bucket ? _( "Spill contents and store in inventory" ) : _( "Store in inventory" ),
@@ -10715,8 +10715,10 @@ void Character::start_hauling()
 
 void Character::stop_hauling()
 {
-    add_msg( _( "You stop hauling items." ) );
-    hauling = false;
+    if( hauling ) {
+        add_msg( _( "You stop hauling items." ) );
+        hauling = false;
+    }
     if( has_activity( ACT_MOVE_ITEMS ) ) {
         cancel_activity();
     }
@@ -10793,6 +10795,7 @@ void Character::cancel_activity()
         backlog.front().auto_resume = false;
     }
     if( activity && activity.is_suspendable() ) {
+        activity.allow_distractions();
         backlog.push_front( activity );
     }
     sfx::end_activity_sounds(); // kill activity sounds when canceled
@@ -10803,6 +10806,8 @@ void Character::resume_backlog_activity()
 {
     if( !backlog.empty() && backlog.front().auto_resume ) {
         activity = backlog.front();
+        activity.auto_resume = false;
+        activity.allow_distractions();
         backlog.pop_front();
     }
 }
