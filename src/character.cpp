@@ -490,8 +490,34 @@ character_id Character::getID() const
 
 void Character::randomize_blood()
 {
-    my_blood_type = static_cast<blood_type>( rng( 0, static_cast<int>( blood_type::num_bt ) - 1 ) );
-    blood_rh_factor = one_in( 2 );
+    // Blood type distribution data is taken from this study on blood types of
+    // COVID-19 patients presented to five major hospitals in Massachusetts:
+    // https://www.ncbi.nlm.nih.gov/pmc/articles/PMC7354354/
+    // and is adjusted for racial/ethnic distribution in game, which is defined in
+    // data/json/npcs/appearance_trait_groups.json
+    static const std::array<std::tuple<double, blood_type, bool>, 8> blood_type_distribution = {{
+            std::make_tuple( 0.3821, blood_type::blood_O, true ),
+            std::make_tuple( 0.0387, blood_type::blood_O, false ),
+            std::make_tuple( 0.3380, blood_type::blood_A, true ),
+            std::make_tuple( 0.0414, blood_type::blood_A, false ),
+            std::make_tuple( 0.1361, blood_type::blood_B, true ),
+            std::make_tuple( 0.0134, blood_type::blood_B, false ),
+            std::make_tuple( 0.0437, blood_type::blood_AB, true ),
+            std::make_tuple( 0.0066, blood_type::blood_AB, false )
+        }
+    };
+    const double x = rng_float( 0.0, 1.0 );
+    double cumulative_prob = 0.0;
+    for( const std::tuple<double, blood_type, bool> &type : blood_type_distribution ) {
+        cumulative_prob += std::get<0>( type );
+        if( x <= cumulative_prob ) {
+            my_blood_type = std::get<1>( type );
+            blood_rh_factor = std::get<2>( type );
+            return;
+        }
+    }
+    my_blood_type = blood_type::blood_AB;
+    blood_rh_factor = false;
 }
 
 field_type_id Character::bloodType() const
@@ -5017,9 +5043,13 @@ std::string Character::debug_weary_info() const
     int input = weary.tracker;
     int thresh = weary_threshold();
     int current = weariness_level();
+    int morale = get_morale_level();
+    int weight = units::to_gram<int>( bodyweight() );
+    float bmi = get_bmi();
 
-    return string_format( "Weariness: %s Max Exertion: %s Mult: %g\nBMR: %d Intake: %d Tracker: %d Thresh: %d At: %d\nCalories: %d",
-                          amt, max_act, move_mult, bmr, intake, input, thresh, current, stored_calories );
+    return string_format( "Weariness: %s Max Full Exert: %s Mult: %g\nBMR: %d Intake: %d Tracker: %d Thresh: %d At: %d\nCal: %d/%d Fatigue: %d Morale: %d Wgt: %d (BMI %.1f)",
+                          amt, max_act, move_mult, bmr, intake, input, thresh, current, stored_calories,
+                          healthy_calories, fatigue, morale, weight, bmi );
 }
 
 void weariness_tracker::clear()
