@@ -1986,7 +1986,19 @@ class Character : public Creature, public visitable
         // Randomizes characters' blood type and Rh
         void randomize_blood();
 
+        int get_focus() const {
+            return std::max( 1, focus_pool / 1000 );
+        }
+        void mod_focus( int amount ) {
+            focus_pool += amount * 1000;
+        }
+        // Set the focus pool directly, only use for debugging.
+        void set_focus( int amount ) {
+            focus_pool = amount * 1000;
+        }
+    protected:
         int focus_pool = 0;
+    public:
         int cash = 0;
         std::set<character_id> follower_ids;
         weak_ptr_fast<Creature> last_target;
@@ -2055,6 +2067,7 @@ class Character : public Creature, public visitable
         std::list<item> use_charges( const itype_id &what, int qty, int radius,
                                      const std::function<bool( const item & )> &filter = return_true<item> );
 
+        const item *find_firestarter_with_charges( int quantity ) const;
         bool has_fire( int quantity ) const;
         void use_fire( int quantity );
         void assign_stashed_activity();
@@ -2562,6 +2575,7 @@ class Character : public Creature, public visitable
          * @return if the craft can be continued
          */
         bool can_continue_craft( item &craft );
+        bool can_continue_craft( item &craft, const requirement_data &continue_reqs );
         /** Returns nearby NPCs ready and willing to help with crafting. */
         std::vector<npc *> get_crafting_helpers() const;
         int get_num_crafting_helpers( int max ) const;

@@ -2361,6 +2361,8 @@ void Character::practice( const skill_id &id, int amount, int cap, bool suppress
         }
     }
     if( amount > 0 && level.isTraining() ) {
+        int focus_drain_cap = std::sqrt( focus_pool * 1000 );
+        amount = std::min( amount, focus_drain_cap );
         int oldLevel = get_skill_level( id );
         get_skill_level_object( id ).train( amount );
         int newLevel = get_skill_level( id );
@@ -2377,14 +2379,18 @@ void Character::practice( const skill_id &id, int amount, int cap, bool suppress
                      skill_name );
         }
 
-        int chance_to_drop = focus_pool;
-        focus_pool -= chance_to_drop / 100;
         // Apex Predators don't think about much other than killing.
         // They don't lose Focus when practicing combat skills.
-        if( ( rng( 1, 100 ) <= ( chance_to_drop % 100 ) ) && ( !( has_trait_flag( "PRED4" ) &&
-                skill.is_combat_skill() ) ) ) {
-            focus_pool--;
+        if( !( has_trait_flag( "PRED4" ) && skill.is_combat_skill() ) ) {
+            // Base reduction on the larger of 1% of total, or practice amount.
+            // The latter kicks in when long actions like crafting
+            // apply many turns of gains at once.
+            int focus_drain = std::max( focus_pool / 100, amount );
+            // The purpose of having this squared is that it makes focus drain dramatically slower
+            // as it approaches zero.
+            focus_pool -= ( focus_drain * focus_drain ) / 1000;
         }
+        focus_pool = std::max( focus_pool, 0 );
     }
 
     get_skill_level_object( id ).practice();
@@ -4117,7 +4123,7 @@ int Character::rust_rate() const
     int intel = get_int();
     /** @EFFECT_INT reduces skill rust by 10% per level above 8 */
     int ret = ( ( rate_option == "vanilla" || rate_option == "capped" ) ?
-                100 : 100 + 10 * ( 8 - intel ) );
+                100 : 100 + 10 * ( intel - 8 ) );
 
     ret *= mutation_value( "skill_rust_multiplier" );
 
@@ -5950,7 +5956,7 @@ void Character::update_needs( int rate_multiplier )
             }
 
             mod_pain( rng( 4, 6 ) );
-            focus_pool -= 1;
+            mod_focus( -1 );
         }
     }
 }
@@ -9748,7 +9754,7 @@ ret_val<bool> Character::can_wield( const item &it ) const
 
 bool Character::has_wield_conflicts( const item &it ) const
 {
-    return is_armed() && !it.can_combine( weapon );
+    return is_wielding( it ) || ( is_armed() && !it.can_combine( weapon ) );
 }
 
 bool Character::unwield()
@@ -11308,6 +11314,23 @@ std::list<item> Character::use_charges( const itype_id &what, int qty,
     return use_charges( what, qty, -1, filter );
 }
 
+const item *Character::find_firestarter_with_charges( const int quantity ) const
+{
+    for( const item *i : all_items_with_flag( flag_FIRESTARTER ) ) {
+        if( !i->typeId()->can_have_charges() ) {
+            const use_function *usef = i->type->get_use( "firestarter" );
+            const firestarter_actor *actor = dynamic_cast<const firestarter_actor *>( usef->get_actor_ptr() );
+            if( actor->can_use( *this->as_character(), *i, false, tripoint_zero ).success() ) {
+                return i;
+            }
+        } else if( has_charges( i->typeId(), quantity ) ) {
+            return i;
+        }
+    }
+
+    return nullptr;
+}
+
 bool Character::has_fire( const int quantity ) const
 {
     // TODO: Replace this with a "tool produces fire" flag.
@@ -11316,19 +11339,8 @@ bool Character::has_fire( const int quantity ) const
         return true;
     } else if( has_item_with_flag( flag_FIRE ) ) {
         return true;
-    } else if( has_item_with_flag( flag_FIRESTARTER ) ) {
-        auto firestarters = all_items_with_flag( flag_FIRESTARTER );
-        for( auto &i : firestarters ) {
-            if( !i->typeId()->can_have_charges() ) {
-                const use_function *usef = i->type->get_use( "firestarter" );
-                const firestarter_actor *actor = dynamic_cast<const firestarter_actor *>( usef->get_actor_ptr() );
-                if( actor->can_use( *this->as_character(), *i, false, tripoint_zero ).success() ) {
-                    return true;
-                }
-            } else if( has_charges( i->typeId(), quantity ) ) {
-                return true;
-            }
-        }
+    } else if( find_firestarter_with_charges( quantity ) ) {
+        return true;
     } else if( has_active_bionic( bio_tools ) && get_power_level() > quantity * 5_kJ ) {
         return true;
     } else if( has_bionic( bio_lighter ) && get_power_level() > quantity * 5_kJ ) {
@@ -11339,6 +11351,7 @@ bool Character::has_fire( const int quantity ) const
         // HACK: A hack to make NPCs use their Molotovs
         return true;
     }
+
     return false;
 }
 
@@ -11381,13 +11394,10 @@ void Character::use_fire( const int quantity )
         return;
     } else if( has_item_with_flag( flag_FIRE ) ) {
         return;
-    } else if( has_item_with_flag( flag_FIRESTARTER ) ) {
-        auto firestarters = all_items_with_flag( flag_FIRESTARTER );
-        for( auto &i : firestarters ) {
-            if( has_charges( i->typeId(), quantity ) ) {
-                use_charges( i->typeId(), quantity );
-                return;
-            }
+    } else if( const item *firestarter = find_firestarter_with_charges( quantity ) ) {
+        if( firestarter->typeId()->can_have_charges() ) {
+            use_charges( firestarter->typeId(), quantity );
+            return;
         }
     } else if( has_active_bionic( bio_tools ) && get_power_level() > quantity * 5_kJ ) {
         mod_power_level( -quantity * 5_kJ );
@@ -11598,7 +11608,7 @@ bool Character::has_opposite_trait( const trait_id &flag ) const
 
 int Character::adjust_for_focus( int amount ) const
 {
-    int effective_focus = focus_pool;
+    int effective_focus = get_focus();
     if( has_trait( trait_FASTLEARNER ) ) {
         effective_focus += 15;
     }
@@ -11610,8 +11620,8 @@ int Character::adjust_for_focus( int amount ) const
     }
     effective_focus += ( get_int() - get_option<int>( "INT_BASED_LEARNING_BASE_VALUE" ) ) *
                        get_option<int>( "INT_BASED_LEARNING_FOCUS_ADJUSTMENT" );
-    double tmp = amount * ( effective_focus / 100.0 );
-    return roll_remainder( tmp );
+    effective_focus = std::max( effective_focus, 1 );
+    return effective_focus * std::min( amount, 1000 );
 }
 
 std::set<tripoint> Character::get_path_avoid() const
@@ -12704,7 +12714,7 @@ void Character::practice_proficiency( const proficiency_id &prof, const time_dur
 {
     int amt = to_seconds<int>( amount );
     const float pct_before = _proficiencies->pct_practiced( prof );
-    time_duration focused_amount = time_duration::from_seconds( adjust_for_focus( amt ) );
+    time_duration focused_amount = time_duration::from_seconds( adjust_for_focus( amt ) / 100 );
     const bool learned = _proficiencies->practice( prof, focused_amount, max );
     const float pct_after = _proficiencies->pct_practiced( prof );
 
