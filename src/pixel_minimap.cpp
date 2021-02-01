@@ -120,7 +120,7 @@ SDL_Color get_critter_color( Creature *critter, int flicker, int mixture )
 class pixel_minimap::shared_texture_pool
 {
     public:
-        shared_texture_pool( const std::function<SDL_Texture_Ptr()> &generator ) {
+        explicit shared_texture_pool( const std::function<SDL_Texture_Ptr()> &generator ) {
             const size_t pool_size = ( MAPSIZE + 1 ) * ( MAPSIZE + 1 );
 
             texture_pool.reserve( pool_size );
@@ -173,7 +173,7 @@ struct pixel_minimap::submap_cache {
     shared_texture_pool &pool;
 
     //reserve the SEEX * SEEY submap tiles
-    submap_cache( shared_texture_pool &pool ) :
+    explicit submap_cache( shared_texture_pool &pool ) :
         pool( pool ) {
         chunk_tex = pool.request_tex( texture_index );
     }

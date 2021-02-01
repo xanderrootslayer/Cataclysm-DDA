@@ -243,7 +243,7 @@ inline bool goes_bad_cache_is_for( const item *i )
 }
 
 struct scoped_goes_bad_cache {
-    scoped_goes_bad_cache( item *i ) {
+    explicit scoped_goes_bad_cache( item *i ) {
         goes_bad_cache_set( i );
     }
     ~scoped_goes_bad_cache() {
@@ -2619,23 +2619,25 @@ void item::armor_protection_info( std::vector<iteminfo> &info, const iteminfo_qu
     if( parts->test( iteminfo_parts::ARMOR_PROTECTION ) ) {
         const std::string space = "  ";
         info.push_back( iteminfo( "ARMOR", _( "<bold>Protection</bold>: Bash: " ), "",
-                                  iteminfo::no_newline, bash_resist() ) );
-        info.push_back( iteminfo( "ARMOR", space + _( "Cut: " ), "", iteminfo::no_newline, cut_resist() ) );
-        info.push_back( iteminfo( "ARMOR", space + _( "Ballistic: " ), bullet_resist() ) );
+                                  iteminfo::no_newline | iteminfo::is_decimal, bash_resist() ) );
+        info.push_back( iteminfo( "ARMOR", space + _( "Cut: " ), "",
+                                  iteminfo::no_newline | iteminfo::is_decimal, cut_resist() ) );
+        info.push_back( iteminfo( "ARMOR", space + _( "Ballistic: " ), "", iteminfo::is_decimal,
+                                  bullet_resist() ) );
         info.push_back( iteminfo( "ARMOR", space + _( "Acid: " ), "",
-                                  iteminfo::no_newline, acid_resist() ) );
+                                  iteminfo::no_newline | iteminfo::is_decimal, acid_resist() ) );
         info.push_back( iteminfo( "ARMOR", space + _( "Fire: " ), "",
-                                  iteminfo::no_newline, fire_resist() ) );
+                                  iteminfo::no_newline | iteminfo::is_decimal, fire_resist() ) );
         info.push_back( iteminfo( "ARMOR", space + _( "Environmental: " ),
                                   get_base_env_resist( *this ) ) );
         if( type->can_use( "GASMASK" ) || type->can_use( "DIVE_TANK" ) ) {
             info.push_back( iteminfo( "ARMOR",
                                       _( "<bold>Protection when active</bold>: " ) ) );
             info.push_back( iteminfo( "ARMOR", space + _( "Acid: " ), "",
-                                      iteminfo::no_newline,
+                                      iteminfo::no_newline | iteminfo::is_decimal,
                                       acid_resist( false, get_base_env_resist_w_filter() ) ) );
             info.push_back( iteminfo( "ARMOR", space + _( "Fire: " ), "",
-                                      iteminfo::no_newline,
+                                      iteminfo::no_newline | iteminfo::is_decimal,
                                       fire_resist( false, get_base_env_resist_w_filter() ) ) );
             info.push_back( iteminfo( "ARMOR", space + _( "Environmental: " ),
                                       get_env_resist( get_base_env_resist_w_filter() ) ) );
@@ -4496,25 +4498,15 @@ int item::on_wield_cost( const player &p ) const
     return mv;
 }
 
-void item::on_wield( player &p, int mv )
+void item::on_wield( player &p )
 {
     int wield_cost = on_wield_cost( p );
-    mv += wield_cost;
     p.moves -= wield_cost;
 
     std::string msg;
 
-    if( mv > 500 ) {
-        msg = _( "It takes you an extremely long time to wield your %s." );
-    } else if( mv > 250 ) {
-        msg = _( "It takes you a very long time to wield your %s." );
-    } else if( mv > 100 ) {
-        msg = _( "It takes you a long time to wield your %s." );
-    } else if( mv > 50 ) {
-        msg = _( "It takes you several seconds to wield your %s." );
-    } else {
-        msg = _( "You wield your %s." );
-    }
+    msg = _( "You wield your %s." );
+
     // if game is loaded - don't want ownership assigned during char creation
     if( get_player_character().getID().is_valid() ) {
         handle_pickup_ownership( p );
@@ -7980,7 +7972,7 @@ ret_val<bool> item::is_gunmod_compatible( const item &mod ) const
                                             mod.type->gunmod->location.name() );
 
     } else if( !mod.type->gunmod->usable.count( gun_type() ) &&
-               !mod.type->gunmod->usable.count( typeId().str() ) ) {
+               !mod.type->gunmod->usable.count( gun_type_type( typeId().str() ) ) ) {
         return ret_val<bool>::make_failure( _( "cannot have a %s" ), mod.tname() );
 
     } else if( typeId() == itype_hand_crossbow &&

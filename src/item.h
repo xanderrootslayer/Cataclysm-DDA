@@ -208,7 +208,7 @@ class item : public visitable
         // Legacy constructor for constructing from string rather than itype_id
         // TODO: remove this and migrate code using it.
         template<typename... Args>
-        item( const std::string &itype, Args &&... args ) :
+        explicit item( const std::string &itype, Args &&... args ) :
             item( itype_id( itype ), std::forward<Args>( args )... )
         {}
 
@@ -1368,7 +1368,7 @@ class item : public visitable
          * @param p player that has started wielding item
          * @param mv number of moves *already* spent wielding the weapon
          */
-        void on_wield( player &p, int mv = 0 );
+        void on_wield( player &p );
         /**
          * Callback when a player starts carrying the item. The item is already in the inventory
          * and is called from there. This is not called when the item is added to the inventory

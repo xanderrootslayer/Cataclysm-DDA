@@ -84,7 +84,8 @@ void load_recipe_category( const JsonObject &jsobj )
         jsobj.throw_error( "Crafting category id has to be prefixed with 'CC_'" );
     }
 
-    if( !is_hidden ) {
+    if( !is_hidden &&
+        std::find( craft_cat_list.begin(), craft_cat_list.end(), category ) == craft_cat_list.end() ) {
         craft_cat_list.push_back( category );
     }
 
@@ -95,7 +96,10 @@ void load_recipe_category( const JsonObject &jsobj )
         if( subcat_id.find( "CSC_" + cat_name + "_" ) != 0 && subcat_id != "CSC_ALL" ) {
             jsobj.throw_error( "Crafting sub-category id has to be prefixed with CSC_<category_name>_" );
         }
-        craft_subcat_list[category].push_back( subcat_id );
+        if( find( craft_subcat_list[category].begin(), craft_subcat_list[category].end(),
+                  subcat_id ) == craft_subcat_list[category].end() ) {
+            craft_subcat_list[category].push_back( subcat_id );
+        }
     }
 }
 
@@ -237,7 +241,7 @@ const recipe *select_crafting_recipe( int &batch_size )
     list_circularizer<std::string> subtab( craft_subcat_list[tab.cur()] );
     std::vector<const recipe *> current;
     struct availability {
-        availability( const recipe *r, int batch_size = 1 ) {
+        explicit availability( const recipe *r, int batch_size = 1 ) {
             Character &player = get_player_character();
             const inventory &inv = player.crafting_inventory();
             auto all_items_filter = r->get_component_filter( recipe_filter_flags::none );
