@@ -1,30 +1,41 @@
 #include "activity_actor.h"
-#include "activity_actor_definitions.h"
 
+#include <algorithm>
 #include <array>
 #include <cmath>
+#include <cstddef>
+#include <cstdint>
 #include <functional>
 #include <list>
+#include <map>
+#include <new>
+#include <string>
+#include <type_traits>
 #include <utility>
+#include <vector>
 
 #include "action.h"
+#include "activity_actor_definitions.h"
 #include "activity_handlers.h" // put_into_vehicle_or_drop and drop_on_map
 #include "advanced_inv.h"
 #include "avatar.h"
 #include "avatar_action.h"
 #include "bodypart.h"
+#include "calendar.h"
 #include "character.h"
+#include "coordinates.h"
+#include "craft_command.h"
 #include "debug.h"
 #include "enums.h"
 #include "event.h"
 #include "event_bus.h"
 #include "flag.h"
-#include "flat_set.h"
 #include "game.h"
+#include "game_constants.h"
 #include "gates.h"
 #include "gun_mode.h"
+#include "handle_liquid.h"
 #include "iexamine.h"
-#include "int_id.h"
 #include "item.h"
 #include "item_contents.h"
 #include "item_group.h"
@@ -35,24 +46,32 @@
 #include "map.h"
 #include "map_iterator.h"
 #include "mapdata.h"
+#include "memory_fast.h"
 #include "messages.h"
+#include "monster.h"
 #include "morale_types.h"
+#include "mtype.h"
 #include "npc.h"
 #include "optional.h"
 #include "options.h"
 #include "output.h"
 #include "pickup.h"
+#include "pimpl.h"
 #include "player.h"
 #include "player_activity.h"
 #include "point.h"
 #include "ranged.h"
+#include "recipe.h"
+#include "requirements.h"
 #include "ret_val.h"
 #include "rng.h"
 #include "sounds.h"
+#include "string_formatter.h"
 #include "timed_event.h"
 #include "translations.h"
 #include "ui.h"
 #include "uistate.h"
+#include "units.h"
 #include "value_ptr.h"
 #include "vehicle.h"
 #include "vpart_position.h"
@@ -975,6 +994,9 @@ void move_items_activity_actor::do_turn( player_activity &act, Character &who )
     if( target_items.empty() ) {
         // Nuke the current activity, leaving the backlog alone.
         act.set_to_null();
+        if( who.is_hauling() && !get_map().has_haulable_items( who.pos() ) ) {
+            who.stop_hauling();
+        }
     }
 }
 
@@ -1007,7 +1029,7 @@ std::unique_ptr<activity_actor> move_items_activity_actor::deserialize( JsonIn &
 static void cancel_pickup( Character &who )
 {
     who.cancel_activity();
-    if( who.is_hauling() && !get_map().has_items( who.pos() ) ) {
+    if( who.is_hauling() && !get_map().has_haulable_items( who.pos() ) ) {
         who.stop_hauling();
     }
 }
@@ -1169,13 +1191,16 @@ void lockpick_activity_actor::finish( player_activity &act, Character &who )
 
     // Without at least a basic lockpick proficiency, your skill level is effectively 6 levels lower.
     int proficiency_effect = -3;
+    int duration_proficiency_factor = 10;
     if( who.has_proficiency( proficiency_prof_lockpicking ) ) {
         // If you have the basic lockpick prof, negate the above penalty
         proficiency_effect = 0;
+        duration_proficiency_factor = 5;
     }
     if( who.has_proficiency( proficiency_prof_lockpicking_expert ) ) {
         // If you have the locksmith proficiency, your skill level is effectively 4 levels higher.
         proficiency_effect = 3;
+        duration_proficiency_factor = 1;
     }
 
     // We get our average roll by adding the above factors together. For a person with no skill, average stats, no proficiencies, and an improvised lockpick, mean_roll will be 2.
@@ -1242,6 +1267,11 @@ void lockpick_activity_actor::finish( player_activity &act, Character &who )
     if( destroy && lockpick.has_value() ) {
         ( *lockpick ).remove_item();
     }
+
+    who.practice_proficiency( proficiency_prof_lockpicking,
+                              time_duration::from_moves( act.moves_total ) / duration_proficiency_factor );
+    who.practice_proficiency( proficiency_prof_lockpicking_expert,
+                              time_duration::from_moves( act.moves_total ) / duration_proficiency_factor );
 }
 
 cata::optional<tripoint> lockpick_activity_actor::select_location( avatar &you )
