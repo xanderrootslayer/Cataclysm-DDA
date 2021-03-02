@@ -363,6 +363,9 @@ struct vehicle_part {
         /** Can this part contain liquid fuels? */
         bool is_tank() const;
 
+        /** Does this part currently contain some liquid? */
+        bool contains_liquid() const;
+
         /** Can this part store electrical charge? */
         bool is_battery() const;
 
@@ -1183,7 +1186,7 @@ class vehicle
         int basic_consumption( const itype_id &ftype ) const;
         int consumption_per_hour( const itype_id &ftype, int fuel_rate ) const;
 
-        void consume_fuel( int load, int t_seconds = 6, bool skip_electric = false );
+        void consume_fuel( int load, bool idling );
 
         /**
          * Maps used fuel to its basic (unscaled by load/strain) consumption.
