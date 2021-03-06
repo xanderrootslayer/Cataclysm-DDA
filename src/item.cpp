@@ -521,7 +521,7 @@ item &item::activate()
 
 bool item::activate_thrown( const tripoint &pos )
 {
-    return type->invoke( get_avatar(), *this, pos );
+    return type->invoke( get_avatar(), *this, pos ).value_or( 0 );
 }
 
 units::energy item::set_energy( const units::energy &qty )
@@ -2239,6 +2239,13 @@ void item::gun_info( const item *mod, std::vector<iteminfo> &info, const iteminf
                                           iteminfo::show_plus, ammo_dam.total_damage() ) );
             }
         }
+
+        if( damage_level() > 0 ) {
+            int dmg_penalty = damage_level() * -2;
+            info.push_back( iteminfo( "GUN", "damaged_weapon_penalty", "",
+                                      iteminfo::no_newline | iteminfo::no_name, dmg_penalty ) );
+        }
+
         if( parts->test( iteminfo_parts::GUN_DAMAGE_TOTAL ) ) {
             info.push_back( iteminfo( "GUN", "sum_of_damage", _( " = <num>" ),
                                       iteminfo::no_newline | iteminfo::no_name,
@@ -10609,7 +10616,15 @@ std::vector<item_comp> item::get_uncraft_components() const
     } else {
         //Make a new vector of components from the registered components
         for( const item &component : components ) {
-            ret.push_back( item_comp( component.typeId(), component.count() ) );
+            auto iter = std::find_if( ret.begin(), ret.end(), [component]( item_comp & obj ) {
+                return obj.type == component.typeId();
+            } );
+
+            if( iter != ret.end() ) {
+                iter->count += component.count();
+            } else {
+                ret.push_back( item_comp( component.typeId(), component.count() ) );
+            }
         }
     }
     return ret;
